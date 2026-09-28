@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { MatchResult, SearchSession, ProviderCursor } from '@/types';
 import { JobCard } from './JobCard';
-import { Sparkles, ArrowUpDown, Filter, AlertCircle, RotateCcw } from 'lucide-react';
+import { Sparkles, ArrowUpDown, Filter, AlertCircle, RotateCcw, Plus, Trash2 } from 'lucide-react';
 
 interface MatchesBoardProps {
   matches: MatchResult[];
@@ -16,6 +16,8 @@ interface MatchesBoardProps {
   onSessionChange?: (sessionId: string) => void;
   nextCursor?: ProviderCursor | null;
   onResetSession?: () => void;
+  onCreateSession?: () => void;
+  onDeleteSession?: (sessionId: string) => void;
 }
 
 export function MatchesBoard({
@@ -29,6 +31,8 @@ export function MatchesBoard({
   onSessionChange,
   nextCursor,
   onResetSession,
+  onCreateSession,
+  onDeleteSession,
 }: MatchesBoardProps) {
   const [minScoreFilter, setMinScoreFilter] = useState<number>(0);
   const [remoteOnlyFilter, setRemoteOnlyFilter] = useState<boolean>(false);
@@ -66,34 +70,62 @@ export function MatchesBoard({
             <h2 className="text-base font-semibold text-white">AI Matched Opportunities</h2>
           </div>
           <div className="text-xs text-neutral-400">
-            {sessions.length > 1 ? (
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-neutral-300">Session:</span>
+            <div className="flex flex-wrap items-center gap-2 mt-1.5">
+              <span className="text-neutral-400">Track:</span>
+              {sessions.length > 1 ? (
                 <select
                   value={activeSessionId || ''}
                   onChange={(e) => onSessionChange?.(e.target.value)}
-                  className="bg-neutral-800 border border-neutral-700 text-neutral-200 px-2 py-0.5 rounded-lg text-xs focus:outline-none"
+                  className="bg-neutral-800 border border-neutral-700 text-neutral-200 px-2.5 py-1 rounded-lg text-xs font-medium focus:outline-none focus:border-indigo-500"
                 >
                   {sessions.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} ({s.skills.slice(0, 2).join(', ')})
+                      {s.name} ({s.skills.slice(0, 3).join(', ')})
                     </option>
                   ))}
                 </select>
-              </div>
-            ) : (
-              <div className="mt-0.5">
-                <span className="font-medium text-neutral-300">
-                  {activeSession?.name || 'Default Search'}
-                </span>
-                {activeSession?.skills && activeSession.skills.length > 0 && (
-                  <span className="text-neutral-500 ml-1.5">
-                    • {activeSession.skills.join(', ')}
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-neutral-200">
+                    {activeSession?.name || 'Default Search'}
                   </span>
-                )}
-              </div>
-            )}
-            <p className="mt-1">
+                  {activeSession?.skills && activeSession.skills.length > 0 && (
+                    <span className="text-neutral-500">
+                      • {activeSession.skills.slice(0, 3).join(', ')}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {onCreateSession && (
+                <button
+                  type="button"
+                  onClick={onCreateSession}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-800/80 text-indigo-300 hover:text-white rounded-lg text-xs font-medium transition"
+                  title="Create a new search track"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  New Track
+                </button>
+              )}
+
+              {onDeleteSession && sessions.length > 1 && activeSession && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm(`Are you sure you want to delete track "${activeSession.name}"?`)) {
+                      onDeleteSession(activeSession.id);
+                    }
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 text-neutral-500 hover:text-red-400 hover:bg-red-950/40 border border-transparent hover:border-red-900/60 rounded-lg text-xs transition"
+                  title="Delete current search track"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete
+                </button>
+              )}
+            </div>
+            <p className="mt-2 text-[11px] text-neutral-400">
               {matches.length > 0
                 ? `Found ${matches.length} active positions scored by OpenAI for this session`
                 : 'Scan JustJoin.it to find and score relevant job opportunities'}

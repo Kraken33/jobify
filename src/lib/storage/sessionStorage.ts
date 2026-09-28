@@ -129,3 +129,31 @@ export async function saveSession(session: SearchSession): Promise<SearchSession
 
   return updatedSession;
 }
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(SESSIONS_STORAGE_KEY);
+      if (raw) {
+        const sessions: SearchSession[] = JSON.parse(raw);
+        const filtered = sessions.filter((s) => s.id !== sessionId);
+        localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(filtered));
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
+  const supabase = getSupabaseClient();
+  if (supabase && isSupabaseConfigured) {
+    try {
+      // If it's a real UUID (not an implicit session), delete from Supabase
+      if (!sessionId.startsWith('jobify:implicit:')) {
+        await supabase.from('search_sessions').delete().eq('id', sessionId);
+      }
+    } catch (err) {
+      console.warn('Failed to delete session from Supabase:', err);
+    }
+  }
+}
+

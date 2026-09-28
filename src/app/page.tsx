@@ -6,13 +6,15 @@ import { Navbar } from '@/components/Navbar';
 import { ProfileForm } from '@/components/ProfileForm';
 import { MatchesBoard } from '@/components/MatchesBoard';
 import { ApiKeyModal } from '@/components/ApiKeyModal';
+import { CreateSessionModal } from '@/components/CreateSessionModal';
 import {
   loadCandidateProfile,
   saveCandidateProfile,
   DEFAULT_PROFILE,
 } from '@/lib/storage/profileStorage';
-import { loadSessions, createImplicitSession, saveSession } from '@/lib/storage/sessionStorage';
+import { loadSessions, createImplicitSession, saveSession, deleteSession } from '@/lib/storage/sessionStorage';
 import { clearCheckpoint } from '@/lib/storage/checkpointStorage';
+import { loadSessionMatches, saveSessionMatches, clearSessionMatches } from '@/lib/storage/matchStorage';
 import { getStoredApiKey, getStoredApifyToken } from '@/lib/storage/apiKeyStorage';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 
@@ -27,6 +29,7 @@ export default function Home() {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [apifyToken, setApifyToken] = useState<string | null>(null);
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
+  const [isCreateSessionOpen, setIsCreateSessionOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -46,12 +49,17 @@ export default function Home() {
         const loadedSessions = await loadSessions(loadedProfile.id);
         if (loadedSessions.length > 0) {
           setSessions(loadedSessions);
-          setActiveSessionId(loadedSessions[0].id);
+          const initialSessionId = loadedSessions[0].id;
+          setActiveSessionId(initialSessionId);
+          const initialMatches = await loadSessionMatches(initialSessionId);
+          setMatches(initialMatches);
         } else {
           const implicit = createImplicitSession(loadedProfile);
           setSessions([implicit]);
           setActiveSessionId(implicit.id);
           await saveSession(implicit);
+          const initialMatches = await loadSessionMatches(implicit.id);
+          setMatches(initialMatches);
         }
       } catch (err) {
         console.error('Failed to initialize local data:', err);
@@ -134,7 +142,11 @@ export default function Home() {
         setMatches((prev) => {
           const existingIds = new Set(prev.map((m) => m.job.id));
           const newUnique = returnedMatches.filter((m) => !existingIds.has(m.job.id));
-          return [...prev, ...newUnique];
+          const updated = [...prev, ...newUnique];
+          if (currentSessionId) {
+            saveSessionMatches(currentSessionId, updated);
+          }
+          return updated;
         });
       }
 
@@ -170,10 +182,39 @@ export default function Home() {
         [currentSessionId]: null,
       }));
       await clearCheckpoint(currentSessionId, 'justjoin');
+      await clearSessionMatches(currentSessionId);
       setSuccessMessage('Session reset. Next scan will fetch from the beginning.');
       setTimeout(() => setSuccessMessage(null), 3500);
     }
   }, [activeSessionId, sessions]);
+
+  const handleSessionChange = useCallback(async (newSessionId: string) => {
+    setActiveSessionId(newSessionId);
+    const sessionMatches = await loadSessionMatches(newSessionId);
+    setMatches(sessionMatches);
+  }, []);
+
+  const handleDeleteSession = useCallback(async (sessionIdToDelete: string) => {
+    if (sessions.length <= 1) return;
+
+    await deleteSession(sessionIdToDelete);
+    await clearCheckpoint(sessionIdToDelete, 'justjoin');
+    await clearSessionMatches(sessionIdToDelete);
+
+    const remainingSessions = sessions.filter((s) => s.id !== sessionIdToDelete);
+    setSessions(remainingSessions);
+
+    if (activeSessionId === sessionIdToDelete) {
+      const nextActive = remainingSessions[0];
+      setActiveSessionId(nextActive.id);
+      const nextMatches = await loadSessionMatches(nextActive.id);
+      setMatches(nextMatches);
+    }
+
+    setSuccessMessage('Search track deleted successfully.');
+    setTimeout(() => setSuccessMessage(null), 3000);
+  }, [sessions, activeSessionId]);
+
 
   if (!mounted) {
     return (
@@ -247,9 +288,11 @@ export default function Home() {
             onOpenKeyModal={() => setIsKeyModalOpen(true)}
             sessions={sessions}
             activeSessionId={activeSessionId}
-            onSessionChange={(sId) => setActiveSessionId(sId)}
+            onSessionChange={handleSessionChange}
             nextCursor={currentCursor}
             onResetSession={handleResetSession}
+            onCreateSession={() => setIsCreateSessionOpen(true)}
+            onDeleteSession={handleDeleteSession}
           />
         ) : (
           <ProfileForm
@@ -266,6 +309,20 @@ export default function Home() {
         onClose={() => setIsKeyModalOpen(false)}
         onKeyUpdated={handleKeyUpdated}
         onApifyTokenUpdated={handleApifyTokenUpdated}
+      />
+
+      {/* Create Session Modal */}
+      <CreateSessionModal
+        isOpen={isCreateSessionOpen}
+        onClose={() => setIsCreateSessionOpen(false)}
+        profile={profile}
+        onSessionCreated={async (newSession) => {
+          setSessions((prev) => [...prev, newSession]);
+          setActiveSessionId(newSession.id);
+          setMatches([]);
+          setSuccessMessage(`Search track "${newSession.name}" created!`);
+          setTimeout(() => setSuccessMessage(null), 3000);
+        }}
       />
     </div>
   );

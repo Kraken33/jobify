@@ -1,9 +1,6 @@
-# Search Sessions Specification
+# Spec Delta
 
-## Purpose
-Provides named, persistent job-hunt tracks that pair a set of provider-level search parameters (skills, seniority, work mode, location) with a pagination cursor and a seen-job deduplication set, enabling users to run multiple independent, stateful job searches simultaneously without mixing their result pools or replay positions.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Search Session Entity
 The system SHALL allow users to create and maintain one or more named search sessions, each holding its own provider search parameters independently of the candidate identity profile.
@@ -49,11 +46,3 @@ The system SHALL associate each job match result with the search session that pr
 #### Scenario: Context switching preserves session matches
 - **WHEN** the user switches from session A to session B and then back to session A
 - **THEN** the matches board restores the exact matches and evaluation results previously scored for session A without requiring a re-scan
-
-### Requirement: Profile as Default Session Template
-The system SHALL use the candidate profile's skills, seniority, and work mode fields as default values when bootstrapping a new search session, while the session's own parameters are the authoritative source for all provider queries once the session is created.
-
-#### Scenario: Bootstrapping a first session from profile defaults
-- **WHEN** no sessions exist and the user triggers a scan for the first time
-- **THEN** the system automatically creates an implicit session using the profile's current skills, seniority, and work mode as search parameters and associates the resulting matches with that session
-
