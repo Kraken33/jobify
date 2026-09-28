@@ -1,14 +1,16 @@
 'use client';
 
 import React from 'react';
-import { Sparkles, Key, CheckCircle2, User, LayoutGrid } from 'lucide-react';
-import { getMaskedApiKey } from '@/lib/storage/apiKeyStorage';
+import { Sparkles, Key, CheckCircle2, User, LayoutGrid, Bot } from 'lucide-react';
+import { getMaskedApiKey, getMaskedApifyToken } from '@/lib/storage/apiKeyStorage';
 
 interface NavbarProps {
   activeTab: 'matches' | 'profile';
   onTabChange: (tab: 'matches' | 'profile') => void;
   hasApiKey: boolean;
   apiKey: string | null;
+  hasApifyToken?: boolean;
+  apifyToken?: string | null;
   onOpenKeyModal: () => void;
   matchCount?: number;
 }
@@ -18,6 +20,8 @@ export function Navbar({
   onTabChange,
   hasApiKey,
   apiKey,
+  hasApifyToken = false,
+  apifyToken = null,
   onOpenKeyModal,
   matchCount = 0,
 }: NavbarProps) {
@@ -72,7 +76,7 @@ export function Navbar({
         </nav>
 
         {/* BYOK Status & Trigger */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             type="button"
             onClick={onOpenKeyModal}
@@ -81,12 +85,40 @@ export function Navbar({
                 ? 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:border-neutral-700'
                 : 'bg-indigo-950/60 border-indigo-800 text-indigo-300 hover:bg-indigo-900/60'
             }`}
+            title={hasApiKey ? `OpenAI key: ${getMaskedApiKey(apiKey)}` : 'Connect your OpenAI API key'}
           >
             <Key className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="hidden sm:inline">
-              {hasApiKey ? getMaskedApiKey(apiKey) : 'Connect OpenAI Key'}
+            <span className="hidden md:inline">OpenAI</span>
+            <span className="hidden sm:inline font-mono text-[11px]">
+              {hasApiKey ? getMaskedApiKey(apiKey) : 'Connect Key'}
             </span>
             {hasApiKey ? (
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenKeyModal}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium transition ${
+              hasApifyToken
+                ? 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:border-neutral-700'
+                : 'bg-amber-950/40 border-amber-800/80 text-amber-300 hover:bg-amber-900/40'
+            }`}
+            title={
+              hasApifyToken
+                ? `Apify token: ${getMaskedApifyToken(apifyToken)}`
+                : 'Connect an Apify token for live JustJoin.it listings'
+            }
+          >
+            <Bot className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="hidden md:inline">Apify</span>
+            <span className="hidden sm:inline font-mono text-[11px]">
+              {hasApifyToken ? getMaskedApifyToken(apifyToken) : 'Sample Data'}
+            </span>
+            {hasApifyToken ? (
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
             ) : (
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />

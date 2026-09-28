@@ -3,6 +3,11 @@ import assert from 'node:assert';
 import {
   isValidKeyFormat,
   getMaskedApiKey,
+  isValidApifyTokenFormat,
+  getMaskedApifyToken,
+  getStoredApifyToken,
+  setStoredApifyToken,
+  clearStoredApifyToken,
 } from '../lib/storage/apiKeyStorage';
 
 describe('API Key Storage Utilities', () => {
@@ -27,3 +32,43 @@ describe('API Key Storage Utilities', () => {
     );
   });
 });
+
+describe('Apify Token Storage Utilities', () => {
+  it('correctly validates valid Apify token formats', () => {
+    assert.strictEqual(
+      isValidApifyTokenFormat('apify_api_1234567890abcdefghij'),
+      true
+    );
+    assert.strictEqual(
+      isValidApifyTokenFormat('  apify_api_abcdefghijklmnopqrstuvwxyz  '),
+      true
+    );
+  });
+
+  it('rejects invalid Apify token formats', () => {
+    assert.strictEqual(isValidApifyTokenFormat(''), false);
+    assert.strictEqual(isValidApifyTokenFormat('apify_api_short'), false);
+    assert.strictEqual(isValidApifyTokenFormat('sk-proj-1234567890abcdefghij'), false);
+    assert.strictEqual(isValidApifyTokenFormat('apify_1234567890abcdefghij'), false);
+  });
+
+  it('masks Apify token correctly for safe display', () => {
+    assert.strictEqual(getMaskedApifyToken(null), '');
+    assert.strictEqual(getMaskedApifyToken(''), '');
+    assert.strictEqual(getMaskedApifyToken('1234'), '••••••••');
+    assert.strictEqual(
+      getMaskedApifyToken('apify_api_1234567890abcdefwxyz'),
+      'apify_api••••••••wxyz'
+    );
+  });
+
+  it('persists, retrieves, and clears the Apify token in guest mode', () => {
+    // In a Node environment without window/localStorage, helpers must not throw
+    // and must degrade to null/no-ops.
+    assert.strictEqual(getStoredApifyToken(), null);
+    setStoredApifyToken('apify_api_1234567890abcdefghij');
+    clearStoredApifyToken();
+    assert.strictEqual(getStoredApifyToken(), null);
+  });
+});
+

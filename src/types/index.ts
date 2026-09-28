@@ -58,6 +58,7 @@ export interface SearchCriteria {
   limit?: number;
   publishedAtCursor?: string | null;
   seenJobIds?: string[];
+  apifyToken?: string | null;
 }
 
 export interface SearchSession {

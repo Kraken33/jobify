@@ -13,7 +13,7 @@ import {
 } from '@/lib/storage/profileStorage';
 import { loadSessions, createImplicitSession, saveSession } from '@/lib/storage/sessionStorage';
 import { clearCheckpoint } from '@/lib/storage/checkpointStorage';
-import { getStoredApiKey } from '@/lib/storage/apiKeyStorage';
+import { getStoredApiKey, getStoredApifyToken } from '@/lib/storage/apiKeyStorage';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export default function Home() {
@@ -25,6 +25,7 @@ export default function Home() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [cursors, setCursors] = useState<Record<string, ProviderCursor | null>>({});
   const [apiKey, setApiKey] = useState<string | null>(null);
+  const [apifyToken, setApifyToken] = useState<string | null>(null);
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -40,6 +41,7 @@ export default function Home() {
         setProfile(loadedProfile);
         const key = getStoredApiKey();
         setApiKey(key);
+        setApifyToken(getStoredApifyToken());
 
         const loadedSessions = await loadSessions(loadedProfile.id);
         if (loadedSessions.length > 0) {
@@ -67,6 +69,14 @@ export default function Home() {
     }
   };
 
+  const handleApifyTokenUpdated = (hasToken: boolean) => {
+    setApifyToken(getStoredApifyToken());
+    if (hasToken) {
+      setSuccessMessage('Apify token saved successfully!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    }
+  };
+
   const handleSaveProfile = async (updated: CandidateProfile) => {
     setIsSavingProfile(true);
     try {
@@ -89,6 +99,8 @@ export default function Home() {
       return;
     }
 
+    const token = getStoredApifyToken();
+
     setIsLoading(true);
     setErrorMessage(null);
 
@@ -100,6 +112,7 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
           'X-OpenAI-Key': key,
+          ...(token ? { 'X-Apify-Token': token } : {}),
         },
         body: JSON.stringify({
           profile,
@@ -185,6 +198,8 @@ export default function Home() {
         }}
         hasApiKey={Boolean(apiKey)}
         apiKey={apiKey}
+        hasApifyToken={Boolean(apifyToken)}
+        apifyToken={apifyToken}
         onOpenKeyModal={() => setIsKeyModalOpen(true)}
         matchCount={matches.length}
       />
@@ -250,6 +265,7 @@ export default function Home() {
         isOpen={isKeyModalOpen}
         onClose={() => setIsKeyModalOpen(false)}
         onKeyUpdated={handleKeyUpdated}
+        onApifyTokenUpdated={handleApifyTokenUpdated}
       />
     </div>
   );

@@ -35,7 +35,7 @@ The system SHALL present scored matches in descending order of fit score, highli
 - **THEN** the user interface displays the job cards ordered from highest fit score to lowest, each containing a direct link opening the posting on JustJoin.it in a new tab
 
 ### Requirement: Session-Scoped Scan Execution
-The system SHALL accept a `sessionId` on the scan endpoint to identify the active search session. It SHALL load the session's checkpoint (provider fingerprint, `publishedAtCursor`, `seenJobIds`), pass the cursor to the provider adapter, and persist the updated checkpoint and seen-ID set after each successful scan.
+The system SHALL accept a `sessionId` on the scan endpoint to identify the active search session and an optional client-provided Apify API token via request header or payload. It SHALL load the session's checkpoint (provider fingerprint, `publishedAtCursor`, `seenJobIds`), pass the cursor and Apify token to the provider adapter, and persist the updated checkpoint and seen-ID set after each successful scan.
 
 #### Scenario: Scan with existing session checkpoint
 - **WHEN** the user triggers a scan for an active session that has a stored `publishedAtCursor`
@@ -44,6 +44,14 @@ The system SHALL accept a `sessionId` on the scan endpoint to identify the activ
 #### Scenario: Scan with no prior checkpoint (first scan or cursor reset)
 - **WHEN** the user triggers a scan for a session with no stored cursor
 - **THEN** the system fetches the full current pool without a date filter and stores the returned `nextCursor` as the session's new `publishedAtCursor`
+
+#### Scenario: Scan with existing session checkpoint and Apify token
+- **WHEN** the user triggers a scan for an active session with an Apify API token in the request header
+- **THEN** the system passes that token and stored cursor to the provider, receives listings newer than the cursor, updates `seenJobIds` with the newly scored job IDs, and persists the updated `publishedAtCursor`
+
+#### Scenario: Scan without Apify token
+- **WHEN** the user triggers a scan without providing an Apify API token
+- **THEN** the system forwards the request to the provider with null token, receiving deterministic fallback listings, and proceeds with pre-filtering and AI matching without failing
 
 ### Requirement: Provider Fingerprint Invalidation on Search-Parameter Change
 The system SHALL compute a provider fingerprint from the session's provider-query parameters (skills, seniority, workMode, location). When the session's search parameters change in a way that alters the fingerprint, the system SHALL reset the `publishedAtCursor` to null and clear the `seenJobIds` for that session, triggering a fresh full-pool scan on the next request. Changes to LLM-only profile fields (experienceSummary, targetRole, minSalary) SHALL NOT invalidate the cursor.
@@ -66,4 +74,15 @@ The system SHALL persist scan checkpoints (fingerprint, cursor, seenJobIds, last
 #### Scenario: Checkpoint saved to localStorage in guest mode
 - **WHEN** a scan completes and Supabase is not configured
 - **THEN** the system serialises the checkpoint to `localStorage` under a key scoped to the session ID, so the cursor persists across page reloads without requiring a database
+
+### Requirement: Client-Provided Apify API Token Configuration
+The system SHALL allow users to locally store, view masked, update, and clear an Apify API token in the client browser settings interface alongside their OpenAI API key. The Apify token SHALL never be persisted in any application database.
+
+#### Scenario: Saving and viewing an Apify API token
+- **WHEN** the user inputs an Apify token in the settings modal and confirms
+- **THEN** the token is stored in browser local storage and subsequent scans include the token in the `X-Apify-Token` header
+
+#### Scenario: Clearing an Apify API token
+- **WHEN** the user removes their stored Apify token from settings
+- **THEN** local storage is cleared of the token and subsequent scan requests omit the `X-Apify-Token` header
 

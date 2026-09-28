@@ -1,6 +1,55 @@
 import { BaseJobProvider } from './JobProvider';
-import { JobListing, ProviderResult, SearchCriteria, SeniorityLevel } from '@/types';
+import {
+  JobListing,
+  ProviderResult,
+  SalaryRange,
+  SearchCriteria,
+  SeniorityLevel,
+  WorkMode,
+} from '@/types';
 import { FALLBACK_JOB_POOL } from './fallbackPool';
+
+/** Synchronous Apify actor endpoint: run the actor and return dataset items in one call. */
+export const APIFY_ACTOR_ENDPOINT =
+  'https://api.apify.com/v2/acts/trev0n~justjoinit-scraper/run-sync-get-dataset-items';
+
+const APIFY_REQUEST_TIMEOUT_MS = 45_000;
+
+/** Actor caps results at 100 offers per request. */
+const APIFY_MAX_ITEMS = 100;
+
+/** Number of fallback listings generated per virtual page (kept in sync with the generator). */
+const FALLBACK_PAGE_SIZE = 3;
+
+/** Shape of a dataset item produced by the `trev0n/justjoinit-scraper` actor. */
+export interface ApifyJustJoinItem {
+  id?: string | number;
+  slug?: string;
+  jobTitle?: string;
+  title?: string;
+  company?: string;
+  companyName?: string;
+  companyLogo?: string;
+  companyLogoThumbUrl?: string;
+  city?: string;
+  street?: string;
+  salary?: unknown;
+  experience?: string;
+  experienceLevel?: string;
+  workplace?: string;
+  workplaceType?: string;
+  workingTime?: string;
+  requiredSkills?: (string | { name?: string })[];
+  skills?: (string | { name?: string })[];
+  niceToHave?: (string | { name?: string })[];
+  published?: string;
+  publishedAt?: string;
+  expires?: string;
+  description?: string;
+  body?: string;
+  jobUrl?: string;
+  url?: string;
+}
 
 interface JustJoinRawOffer {
   id?: string | number;
@@ -42,87 +91,355 @@ export class JustJoinProvider extends BaseJobProvider {
   id = 'justjoin';
   name = 'JustJoin.it';
 
-  private baseUrl = 'https://api.justjoin.it/v2/user-panel/offers';
-
   async searchJobs(criteria: SearchCriteria): Promise<ProviderResult> {
-    const limit = criteria.limit || 25;
-    const url = new URL(this.baseUrl);
+    const token = criteria.apifyToken?.trim();
 
-    url.searchParams.set('page', '1');
-    url.searchParams.set('perPage', String(limit));
-    url.searchParams.set('sortBy', 'published_at');
-    url.searchParams.set('orderBy', 'DESC');
-
-    if (criteria.workMode === 'remote') {
-      url.searchParams.set('workplaceType', 'remote');
-    } else if (criteria.workMode === 'hybrid') {
-      url.searchParams.set('workplaceType', 'partly_remote');
-    } else if (criteria.workMode === 'office') {
-      url.searchParams.set('workplaceType', 'office');
-    }
-
-    if (criteria.seniority) {
-      url.searchParams.append('experienceLevels[]', criteria.seniority);
-    }
-
-    // Map keywords/skills to categories if applicable
-    if (criteria.skills && criteria.skills.length > 0) {
-      const primaryCategory = this.mapSkillToCategory(criteria.skills[0]);
-      if (primaryCategory) {
-        url.searchParams.append('categories[]', primaryCategory);
-      }
+    if (!token) {
+      // BYOK: the public JustJoin endpoint is Cloudflare-protected, so without a
+      // client-provided Apify token we serve the deterministic fallback pool.
+      console.warn('JustJoin ingestion: no Apify token provided, serving deterministic fallback listings.');
+      return this.getSampleFallbackListings(criteria, this.resolveFallbackPage(criteria));
     }
 
     try {
-      const response = await fetch(url.toString(), {
+      return await this.fetchApifyOffers(criteria, token);
+    } catch (error) {
+      // Invalid token, depleted compute units (401/402), timeouts and network
+      // failures all degrade to the fallback pool instead of crashing the scan.
+      console.warn(
+        'Apify JustJoin scraper warning:',
+        error instanceof Error ? error.message : 'unknown error'
+      );
+      return this.getSampleFallbackListings(criteria, this.resolveFallbackPage(criteria));
+    }
+  }
+
+  /**
+   * Runs the `trev0n/justjoinit-scraper` actor synchronously and maps dataset
+   * items into canonical job listings. Throws on transport/quota errors so the
+   * caller can degrade gracefully to the deterministic fallback pool.
+   */
+  private async fetchApifyOffers(criteria: SearchCriteria, token: string): Promise<ProviderResult> {
+    const endpoint = `${APIFY_ACTOR_ENDPOINT}?token=${encodeURIComponent(token)}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), APIFY_REQUEST_TIMEOUT_MS);
+
+    let payload: unknown;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
         headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; Jobify/2.0; +https://github.com)',
-          'Accept': 'application/json',
-          'Version': '2',
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
         },
-        next: { revalidate: 300 },
+        body: JSON.stringify(this.buildApifyInput(criteria)),
+        signal: controller.signal,
+        // The token is request-scoped: never cache or reuse this response.
+        cache: 'no-store',
       });
 
       if (!response.ok) {
-        throw new Error(`JustJoin API responded with status ${response.status}`);
+        throw new Error(`Apify actor responded with status ${response.status}`);
       }
 
-      const json = await response.json();
-      const rawOffers: JustJoinRawOffer[] = Array.isArray(json)
-        ? json
-        : Array.isArray(json.data)
-        ? json.data
-        : [];
+      payload = await response.json();
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`Apify actor run timed out after ${APIFY_REQUEST_TIMEOUT_MS}ms`);
+      }
+      // Re-throw sanitized so the token never reaches the logs.
+      throw new Error(error instanceof Error ? error.message : 'Apify actor request failed');
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
-      let listings = rawOffers.map((raw) => this.normalizeOffer(raw));
+    const rawItems: ApifyJustJoinItem[] = Array.isArray(payload)
+      ? (payload as ApifyJustJoinItem[])
+      : [];
 
-      if (criteria.publishedAtCursor) {
-        const cursorTime = new Date(criteria.publishedAtCursor).getTime();
-        listings = listings.filter((l) => {
-          if (!l.publishedAt) return false;
-          return new Date(l.publishedAt).getTime() > cursorTime;
+    return this.normalizeApifyDataset(rawItems, criteria);
+  }
+
+  /** Serializes search criteria into the actor's input schema. */
+  private buildApifyInput(criteria: SearchCriteria): Record<string, unknown> {
+    const requestedLimit = criteria.limit && criteria.limit > 0 ? criteria.limit : 25;
+    const input: Record<string, unknown> = {
+      maxItems: Math.min(requestedLimit, APIFY_MAX_ITEMS),
+      sortBy: 'published',
+      // Fast overview scrape; full detail extraction requires a proxy and is slow.
+      extractFullDetails: false,
+      location: this.mapLocationToApify(criteria.location),
+    };
+
+    const keyword = criteria.keywords?.[0] || criteria.skills?.[0];
+    if (keyword) {
+      input.keyword = keyword;
+    }
+
+    if (criteria.seniority) {
+      input.experienceLevel = [criteria.seniority];
+    }
+
+    const workplaceType = this.mapWorkModeToApify(criteria.workMode);
+    if (workplaceType) {
+      input.workplaceType = [workplaceType];
+    }
+
+    const category = criteria.skills?.[0] ? this.mapSkillToCategory(criteria.skills[0]) : null;
+    if (category) {
+      input.category = category;
+    }
+
+    return input;
+  }
+
+  /** Maps a free-text location from the candidate profile to a JustJoin city slug. */
+  private mapLocationToApify(location?: string): string {
+    const fallback = 'all-locations';
+    if (!location) return fallback;
+
+    const city = location
+      .replace(/[łŁ]/g, 'l')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .split(/[/,|]/)
+      .map((part) => part.trim())
+      .find((part) => part && !/^(remote|any|all|poland|polska|hybrid|office)$/.test(part));
+
+    if (!city) return fallback;
+
+    const slug = city.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    return slug || fallback;
+  }
+
+  private mapWorkModeToApify(workMode?: WorkMode): string | null {
+    if (workMode === 'remote') return 'remote';
+    if (workMode === 'hybrid') return 'hybrid';
+    if (workMode === 'office') return 'office';
+    return null;
+  }
+
+  /**
+   * Maps raw Apify dataset items into the canonical `JobListing` domain model,
+   * deduplicating by id, sorting newest-first, and applying cursor pagination.
+   */
+  public normalizeApifyDataset(
+    rawItems: ApifyJustJoinItem[],
+    criteria: SearchCriteria = {}
+  ): ProviderResult {
+    const listings: JobListing[] = [];
+    const seenIds = new Set<string>();
+
+    for (const raw of rawItems) {
+      const listing = this.normalizeApifyItem(raw);
+      if (seenIds.has(listing.id)) continue;
+      seenIds.add(listing.id);
+      listings.push(listing);
+    }
+
+    listings.sort((a, b) => {
+      const aTime = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+      const bTime = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    let filtered = listings;
+    if (criteria.publishedAtCursor) {
+      const cursorTime = new Date(criteria.publishedAtCursor).getTime();
+      if (!Number.isNaN(cursorTime)) {
+        filtered = listings.filter((listing) => {
+          if (!listing.publishedAt) return false;
+          return new Date(listing.publishedAt).getTime() > cursorTime;
         });
       }
-
-      let newestPublishedAt: string | null = null;
-      for (const item of listings) {
-        if (item.publishedAt) {
-          if (!newestPublishedAt || new Date(item.publishedAt).getTime() > new Date(newestPublishedAt).getTime()) {
-            newestPublishedAt = item.publishedAt;
-          }
-        }
-      }
-
-      return {
-        listings,
-        nextCursor: newestPublishedAt ? { publishedAtCursor: newestPublishedAt } : null,
-        fallback: false,
-      };
-    } catch (error) {
-      // In case the live API is blocked or offline during test/demo, provide structured fallback
-      console.warn('JustJoin API fetch warning:', error);
-      return this.getSampleFallbackListings(criteria, 1);
     }
+
+    const newestPublishedAt = filtered[0]?.publishedAt ?? null;
+
+    return {
+      listings: filtered,
+      nextCursor: newestPublishedAt ? { publishedAtCursor: newestPublishedAt } : null,
+      fallback: false,
+    };
+  }
+
+  /** Normalizes a single `trev0n/justjoinit-scraper` dataset item. */
+  public normalizeApifyItem(raw: ApifyJustJoinItem): JobListing {
+    const url = raw.jobUrl || raw.url || '';
+    const offerId = this.extractOfferId(raw, url);
+    const title = raw.jobTitle || raw.title || 'Software Engineer';
+    const company = raw.company || raw.companyName || 'Tech Employer';
+
+    const workplaceType = this.mapApifyWorkplace(raw.workplace || raw.workplaceType || '');
+    const isRemote = workplaceType === 'remote';
+
+    const experience = String(raw.experience || raw.experienceLevel || 'mid').toLowerCase();
+    const seniority = this.mapExperienceToSeniority(experience);
+
+    const skillSource =
+      raw.requiredSkills && raw.requiredSkills.length > 0
+        ? raw.requiredSkills
+        : raw.skills && raw.skills.length > 0
+        ? raw.skills
+        : raw.niceToHave || [];
+    const skills = this.extractSkillTags(skillSource);
+
+    return {
+      id: `justjoin_${offerId}`,
+      provider: 'justjoin',
+      title,
+      company,
+      companyLogoUrl: raw.companyLogo || raw.companyLogoThumbUrl,
+      city: raw.city || (isRemote ? 'Remote' : 'Poland'),
+      isRemote,
+      workplaceType,
+      seniority,
+      requiredSkills: skills.length > 0 ? skills : ['TypeScript', 'JavaScript'],
+      salaryRange: this.parseApifySalary(raw.salary),
+      url: url || `https://justjoin.it/offers/${offerId}`,
+      publishedAt: this.parseDate(raw.published || raw.publishedAt),
+      description:
+        raw.description ||
+        raw.body ||
+        `${title} at ${company}. Requires skills in ${skills.join(', ')}.`,
+    };
+  }
+
+  /** Parses the actor's salary field, which may be an object, string, or array of either. */
+  private parseApifySalary(salary: unknown): SalaryRange | undefined {
+    if (salary === null || salary === undefined) return undefined;
+
+    if (Array.isArray(salary)) {
+      for (const entry of salary) {
+        const parsed = this.parseApifySalary(entry);
+        if (parsed) return parsed;
+      }
+      return undefined;
+    }
+
+    if (typeof salary === 'string') {
+      return this.parseSalaryString(salary);
+    }
+
+    if (typeof salary !== 'object') return undefined;
+
+    const record = salary as Record<string, unknown>;
+    const min = this.toNumber(record.min ?? record.from ?? record.minAmount);
+    const max = this.toNumber(record.max ?? record.to ?? record.maxAmount);
+
+    if (min === undefined && max === undefined) {
+      const display = record.display ?? record.raw ?? record.text;
+      return typeof display === 'string' ? this.parseSalaryString(display) : undefined;
+    }
+
+    const currency = typeof record.currency === 'string' ? record.currency : 'PLN';
+    const contractType = record.type ?? record.contractType;
+
+    return {
+      min,
+      max,
+      currency: currency.toUpperCase(),
+      type: typeof contractType === 'string' ? contractType : undefined,
+    };
+  }
+
+  /** Parses human-readable salary strings such as "20 000 - 26 000 PLN (B2B)". */
+  private parseSalaryString(value: string): SalaryRange | undefined {
+    const cleaned = value.replace(/\u00a0/g, ' ');
+
+    const amounts = (cleaned.match(/\d[\d\s.,]*/g) || [])
+      .map((part) => this.toNumber(part))
+      .filter((amount): amount is number => amount !== undefined && amount >= 100);
+
+    if (amounts.length === 0) return undefined;
+
+    const currencyMatch = cleaned.match(/PLN|EUR|USD|GBP|CHF|SEK|NOK|DKK/i);
+    const typeMatch = cleaned.match(/B2B|UoP|UOP|permanent|mandate/i);
+
+    return {
+      min: Math.min(...amounts),
+      max: amounts.length > 1 ? Math.max(...amounts) : undefined,
+      currency: (currencyMatch?.[0] || 'PLN').toUpperCase(),
+      type: typeMatch?.[0],
+    };
+  }
+
+  /** Coerces numbers and formatted numeric strings (e.g. "20 000") into integers. */
+  private toNumber(value: unknown): number | undefined {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? Math.round(value) : undefined;
+    }
+    if (typeof value !== 'string') return undefined;
+
+    const normalized = value
+      .replace(/\u00a0/g, ' ')
+      .replace(/\s/g, '')
+      .replace(/,\d{1,2}$/, '')
+      .replace(/[^\d.]/g, '');
+
+    if (!normalized) return undefined;
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? Math.round(parsed) : undefined;
+  }
+
+  private extractOfferId(raw: ApifyJustJoinItem, url: string): string {
+    if (raw.slug) return String(raw.slug);
+    if (raw.id !== undefined && raw.id !== null && String(raw.id).trim()) {
+      return String(raw.id);
+    }
+    if (url) {
+      const lastSegment = url.split('?')[0].split('/').filter(Boolean).pop();
+      if (lastSegment) return lastSegment;
+    }
+    return Math.random().toString(36).substring(7);
+  }
+
+  private mapApifyWorkplace(value: string): string {
+    const workplace = value.toLowerCase().trim();
+    if (!workplace) return 'remote';
+    if (workplace.includes('hybrid') || workplace.includes('partly')) return 'hybrid';
+    if (workplace.includes('office') || workplace.includes('stationary')) return 'office';
+    if (workplace.includes('remote')) return 'remote';
+    return workplace;
+  }
+
+  private mapExperienceToSeniority(experience: string): SeniorityLevel {
+    if (
+      experience.includes('lead') ||
+      experience.includes('head') ||
+      experience.includes('staff') ||
+      experience.includes('principal') ||
+      experience.includes('expert')
+    ) {
+      return 'lead';
+    }
+    if (experience.includes('senior')) return 'senior';
+    if (
+      experience.includes('junior') ||
+      experience.includes('intern') ||
+      experience.includes('trainee')
+    ) {
+      return 'junior';
+    }
+    return 'mid';
+  }
+
+  private parseDate(value?: unknown): string | undefined {
+    if (typeof value !== 'string' || !value.trim()) return undefined;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+  }
+
+  /**
+   * Derives the fallback page from the scan offset. Fallback listings are served
+   * in fixed-size pages so successive scans without a live actor return fresh
+   * (non-overlapping) demo listings instead of the same static set.
+   */
+  private resolveFallbackPage(criteria: SearchCriteria): number {
+    const offset = criteria.seenJobIds?.length ?? 0;
+    return Math.max(1, Math.floor(offset / FALLBACK_PAGE_SIZE) + 1);
   }
 
   public normalizeOffer(raw: JustJoinRawOffer): JobListing {
@@ -213,7 +530,7 @@ export class JustJoinProvider extends BaseJobProvider {
     const userRole = criteria.skills?.[0] || 'Full Stack Developer';
     const now = Date.now();
 
-    const pageSize = 3;
+    const pageSize = FALLBACK_PAGE_SIZE;
     const totalItems = FALLBACK_JOB_POOL.length;
     const effectivePage = Math.max(1, page);
     const startIndex = ((effectivePage - 1) * pageSize) % totalItems;

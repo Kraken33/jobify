@@ -14,6 +14,8 @@ export async function POST(request: NextRequest) {
       request.headers.get('x-openai-key') ||
       request.headers.get('authorization')?.replace('Bearer ', '');
 
+    const apifyToken = request.headers.get('x-apify-token') || null;
+
     if (!apiKey) {
       return NextResponse.json(
         { error: 'Missing OpenAI API Key. Please connect your API key in Settings.' },
@@ -88,6 +90,7 @@ export async function POST(request: NextRequest) {
       limit: maxScanLimit,
       publishedAtCursor,
       seenJobIds,
+      apifyToken,
     });
 
     const rawListings = providerResult.listings;
