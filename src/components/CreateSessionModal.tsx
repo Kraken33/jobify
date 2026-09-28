@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { CandidateProfile, SearchSession, SeniorityLevel, WorkMode } from "@/types";
+import { CandidateProfile, SearchSession, SeniorityLevel, WorkMode, SpokenLanguage, SpokenLanguageLevel } from "@/types";
 import { saveSession } from "@/lib/storage/sessionStorage";
-import { X, Sparkles, Plus, Check } from "lucide-react";
+import { X, Sparkles, Plus, Check, Globe } from "lucide-react";
 
 interface CreateSessionModalProps {
   isOpen: boolean;
@@ -43,6 +43,9 @@ export function CreateSessionModal({
   const [seniority, setSeniority] = useState<SeniorityLevel>("mid");
   const [workMode, setWorkMode] = useState<WorkMode>("remote");
   const [location, setLocation] = useState<string>("");
+  const [spokenLanguages, setSpokenLanguages] = useState<SpokenLanguage[]>([]);
+  const [langInput, setLangInput] = useState<string>("");
+  const [langLevel, setLangLevel] = useState<SpokenLanguageLevel>("B2");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,12 +56,14 @@ export function CreateSessionModal({
       setSeniority(profile.seniority || "mid");
       setWorkMode(profile.workMode || "remote");
       setLocation(profile.preferredLocation || "");
+      setSpokenLanguages(profile.spokenLanguages || []);
     } else {
       setName("");
       setSkills([]);
       setSeniority("mid");
       setWorkMode("remote");
       setLocation("");
+      setSpokenLanguages([]);
     }
   }, [inheritFromProfile, profile]);
 
@@ -74,6 +79,22 @@ export function CreateSessionModal({
 
   const handleRemoveSkill = (skillToRemove: string) => {
     setSkills(skills.filter((s) => s !== skillToRemove));
+  };
+
+  const handleAddLanguage = (language: string, level: SpokenLanguageLevel) => {
+    const trimmed = language.trim();
+    if (!trimmed) return;
+    setSpokenLanguages((prev) => {
+      const filtered = prev.filter((l) => l.language.toLowerCase() !== trimmed.toLowerCase());
+      return [...filtered, { language: trimmed, level }];
+    });
+    setLangInput("");
+  };
+
+  const handleRemoveLanguage = (langToRemove: string) => {
+    setSpokenLanguages((prev) =>
+      prev.filter((l) => l.language.toLowerCase() !== langToRemove.toLowerCase())
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -107,6 +128,7 @@ export function CreateSessionModal({
         seniority,
         workMode,
         location: location.trim() || undefined,
+        spokenLanguages: spokenLanguages.length > 0 ? spokenLanguages : undefined,
         createdAt: now,
         updatedAt: now,
       };
@@ -311,6 +333,61 @@ export function CreateSessionModal({
                 placeholder={provider === "arbeitsagentur" ? "e.g. Berlin, München" : "e.g. Warsaw, Remote"}
                 className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white focus:outline-none focus:border-indigo-500 placeholder:text-neutral-600"
               />
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-1 border-t border-neutral-800/80">
+            <label className="block text-xs font-medium text-neutral-400 flex items-center gap-1.5">
+              <Globe className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Spoken Languages Filter (Optional)</span>
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={langInput}
+                onChange={(e) => setLangInput(e.target.value)}
+                placeholder="Language (e.g. German, English)"
+                className="flex-1 px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white focus:outline-none focus:border-indigo-500 placeholder:text-neutral-600"
+              />
+              <select
+                value={langLevel}
+                onChange={(e) => setLangLevel(e.target.value as SpokenLanguageLevel)}
+                className="px-2.5 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white focus:outline-none focus:border-indigo-500"
+              >
+                {(["A1", "A2", "B1", "B2", "C1", "C2", "Native"] as SpokenLanguageLevel[]).map((lvl) => (
+                  <option key={lvl} value={lvl}>
+                    {lvl}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => handleAddLanguage(langInput, langLevel)}
+                className="px-3 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-semibold rounded-xl border border-neutral-700 transition"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {spokenLanguages.map((lang) => (
+                <span
+                  key={lang.language}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-950/80 text-emerald-300 border border-emerald-800/60"
+                >
+                  <span>{lang.language}</span>
+                  <span className="px-1 py-0.5 text-[9px] uppercase font-bold rounded bg-emerald-900 text-emerald-200">
+                    {lang.level}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveLanguage(lang.language)}
+                    className="hover:text-white ml-0.5"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
             </div>
           </div>
 

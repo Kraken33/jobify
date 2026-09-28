@@ -3,7 +3,16 @@
 import React, { useState, useMemo } from 'react';
 import { MatchResult, SearchSession, ProviderCursor } from '@/types';
 import { JobCard } from './JobCard';
-import { Sparkles, ArrowUpDown, Filter, AlertCircle, RotateCcw, Plus, Trash2, Landmark } from 'lucide-react';
+import {
+  Sparkles,
+  ArrowUpDown,
+  Filter,
+  AlertCircle,
+  RotateCcw,
+  Plus,
+  Trash2,
+  Landmark,
+} from 'lucide-react';
 
 const PROVIDER_LABELS: Record<string, string> = {
   justjoin: 'JustJoin.it',
@@ -23,6 +32,8 @@ interface MatchesBoardProps {
   onResetSession?: () => void;
   onCreateSession?: () => void;
   onDeleteSession?: (sessionId: string) => void;
+  onDismiss?: (matchId: string) => void;
+  onApply?: (match: MatchResult) => void;
 }
 
 export function MatchesBoard({
@@ -38,6 +49,8 @@ export function MatchesBoard({
   onResetSession,
   onCreateSession,
   onDeleteSession,
+  onDismiss,
+  onApply,
 }: MatchesBoardProps) {
   const [minScoreFilter, setMinScoreFilter] = useState<number>(0);
   const [remoteOnlyFilter, setRemoteOnlyFilter] = useState<boolean>(false);
@@ -52,8 +65,13 @@ export function MatchesBoard({
     return PROVIDER_LABELS[providerId] || providerId;
   }, [activeSession]);
 
+  // Active matches: exclude dismissed and applied
+  const activeMatches = useMemo(() => {
+    return matches.filter((m) => !m.status || m.status === 'active');
+  }, [matches]);
+
   const filteredMatches = useMemo(() => {
-    return matches
+    return activeMatches
       .filter((m) => m.evaluation.score >= minScoreFilter)
       .filter((m) => (!remoteOnlyFilter ? true : m.job.isRemote))
       .sort((a, b) => {
@@ -64,7 +82,7 @@ export function MatchesBoard({
         const bSalary = b.job.salaryRange?.max || b.job.salaryRange?.min || 0;
         return bSalary - aSalary;
       });
-  }, [matches, minScoreFilter, remoteOnlyFilter, sortBy]);
+  }, [activeMatches, minScoreFilter, remoteOnlyFilter, sortBy]);
 
   // If nextCursor is explicitly null (after a scan returned no more items), disable "Scan Next Batch"
   // If nextCursor is undefined (initial before any scan), scanning is enabled.
@@ -145,7 +163,7 @@ export function MatchesBoard({
             </div>
             <p className="mt-2 text-[11px] text-neutral-400">
               {matches.length > 0
-                ? `Found ${matches.length} active positions scored by OpenAI for this session`
+                ? `Found ${activeMatches.length} active position${activeMatches.length !== 1 ? 's' : ''} scored by OpenAI for this session`
                 : `Scan ${providerLabel} to find and score relevant job opportunities`}
             </p>
           </div>
@@ -197,7 +215,7 @@ export function MatchesBoard({
       )}
 
       {/* Filter / Sort bar if matches exist */}
-      {matches.length > 0 && (
+      {activeMatches.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 px-1 py-1 text-xs">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1.5 text-neutral-400">
@@ -261,18 +279,24 @@ export function MatchesBoard({
       {!isLoading && filteredMatches.length > 0 && (
         <div className="space-y-4">
           {filteredMatches.map((match) => (
-            <JobCard key={match.id} match={match} />
+            <JobCard
+              key={match.id}
+              match={match}
+              onDismiss={onDismiss}
+              onApply={onApply}
+            />
           ))}
         </div>
       )}
 
-      {/* Empty State */}
-      {!isLoading && matches.length === 0 && (
+      {/* Empty State — no matches at all */}
+      {!isLoading && activeMatches.length === 0 && matches.length === 0 && (
         <div className="text-center py-16 px-4 bg-neutral-900/50 border border-neutral-800/80 rounded-2xl">
           <Sparkles className="w-10 h-10 text-indigo-400/50 mx-auto mb-3" />
           <h3 className="text-base font-semibold text-white">No job matches yet</h3>
           <p className="text-xs text-neutral-400 max-w-sm mx-auto mt-1 mb-5">
-            Configure your target skills in the Profile tab and click Scan to discover personalized jobs on {providerLabel}.
+            Configure your target skills in the Profile tab and click Scan to discover personalized jobs on{' '}
+            {providerLabel}.
           </p>
           <button
             type="button"
@@ -284,8 +308,15 @@ export function MatchesBoard({
         </div>
       )}
 
+      {/* Empty State — all dismissed/applied */}
+      {!isLoading && activeMatches.length === 0 && matches.length > 0 && (
+        <div className="text-center py-12 px-4 bg-neutral-900/50 border border-neutral-800 rounded-2xl text-xs text-neutral-400">
+          All matches have been actioned. Scan for new opportunities or reset the session.
+        </div>
+      )}
+
       {/* Filter empty state */}
-      {!isLoading && matches.length > 0 && filteredMatches.length === 0 && (
+      {!isLoading && activeMatches.length > 0 && filteredMatches.length === 0 && (
         <div className="text-center py-12 px-4 bg-neutral-900/50 border border-neutral-800 rounded-2xl text-xs text-neutral-400">
           No matches satisfy your filter criteria. Try lowering the minimum match score.
         </div>
@@ -293,3 +324,4 @@ export function MatchesBoard({
     </div>
   );
 }
+

@@ -6,11 +6,11 @@ Defines an extensible job provider ingestion interface with JustJoin.it and Bund
 ## Requirements
 
 ### Requirement: Extensible Job Provider Adapter Interface
-The system SHALL define a standardized provider contract that accepts candidate search criteria (technology keywords, seniority level, remote preferences, and an optional pagination cursor) and returns a result envelope containing normalized job listings and an updated cursor for subsequent fetches. The cursor SHALL carry the `published_at` timestamp of the newest job in the returned batch, enabling the next call to request only jobs published after that point.
+The system SHALL define a standardized provider contract that accepts candidate search criteria (technology keywords, seniority level, remote preferences, spoken language criteria, and an optional pagination cursor) and returns a result envelope containing normalized job listings (including required spoken languages with CEFR levels when specified) and an updated cursor for subsequent fetches. The cursor SHALL carry the `published_at` timestamp of the newest job in the returned batch, enabling the next call to request only jobs published after that point.
 
 #### Scenario: Provider interface returns normalized listing structure with cursor
 - **WHEN** a provider adapter fetches listings from its underlying source
-- **THEN** it transforms each listing into the unified schema (title, company, description, skills tags, workplace type, canonical external URL, and `published_at` timestamp) and returns a `ProviderResult` envelope containing the listings array and a `nextCursor` reflecting the newest `published_at` in the batch
+- **THEN** it transforms each listing into the unified schema (title, company, description, skills tags, workplace type, canonical external URL, `published_at` timestamp, and optional `spokenLanguages` array) and returns a `ProviderResult` envelope containing the listings array and a `nextCursor` reflecting the newest `published_at` in the batch
 
 #### Scenario: Provider called with a timestamp cursor
 - **WHEN** a provider is called with a non-null `publishedAtCursor` value in the search criteria
@@ -81,4 +81,3 @@ The system SHALL implement a provider adapter for Bundesagentur für Arbeit (arb
 #### Scenario: Graceful fallback when Arbeitsagentur is unreachable
 - **WHEN** the Arbeitsagentur endpoint returns a non-200 status or times out
 - **THEN** the adapter logs a diagnostic warning, returns mock listings from the deterministic multi-page fallback generator seeded by page offset, and sets `fallback: true`
-

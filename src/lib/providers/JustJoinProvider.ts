@@ -550,6 +550,7 @@ export class JustJoinProvider extends BaseJobProvider {
         workplaceType: item.workplaceType,
         seniority: item.seniority,
         requiredSkills: item.requiredSkills,
+        spokenLanguages: item.spokenLanguages,
         salaryRange: item.salaryRange,
         url: `https://justjoin.it/offers/${item.slug}`,
         publishedAt: itemTimestamp,

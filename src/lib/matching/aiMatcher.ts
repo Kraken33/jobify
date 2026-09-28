@@ -11,6 +11,16 @@ export class AiMatcherService {
   }
 
   async evaluateFit(profile: CandidateProfile, job: JobListing): Promise<MatchEvaluation> {
+    const candLangs =
+      profile.spokenLanguages && profile.spokenLanguages.length > 0
+        ? profile.spokenLanguages.map((l) => `${l.language} (${l.level})`).join(', ')
+        : 'N/A';
+
+    const jobLangs =
+      job.spokenLanguages && job.spokenLanguages.length > 0
+        ? job.spokenLanguages.map((l) => `${l.language} (${l.level})`).join(', ')
+        : 'N/A';
+
     const prompt = `
 You are an expert technical recruiter assessing candidate-job fit.
 
@@ -20,6 +30,7 @@ Candidate Profile:
 - Core Skills: ${profile.skills.join(', ')}
 - Work Mode: ${profile.workMode}
 - Preferred Location: ${profile.preferredLocation || 'N/A'}
+- Spoken Languages: ${candLangs}
 - Experience Summary: ${profile.experienceSummary || 'N/A'}
 
 Job Listing:
@@ -28,6 +39,7 @@ Job Listing:
 - Seniority: ${job.seniority}
 - Work Mode: ${job.isRemote ? 'Remote' : job.city || 'On-site'}
 - Required Skills: ${job.requiredSkills.join(', ')}
+- Spoken Languages Required: ${jobLangs}
 - Description: ${job.description || 'N/A'}
 
 Evaluate how well the candidate profile matches this job posting.

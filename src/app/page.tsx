@@ -5,6 +5,7 @@ import { CandidateProfile, MatchResult, SearchSession, ProviderCursor } from '@/
 import { Navbar } from '@/components/Navbar';
 import { ProfileForm } from '@/components/ProfileForm';
 import { MatchesBoard } from '@/components/MatchesBoard';
+import { AppliedBoard } from '@/components/AppliedBoard';
 import { ApiKeyModal } from '@/components/ApiKeyModal';
 import { CreateSessionModal } from '@/components/CreateSessionModal';
 import {
@@ -14,13 +15,13 @@ import {
 } from '@/lib/storage/profileStorage';
 import { loadSessions, createImplicitSession, saveSession, deleteSession } from '@/lib/storage/sessionStorage';
 import { clearCheckpoint } from '@/lib/storage/checkpointStorage';
-import { loadSessionMatches, saveSessionMatches, clearSessionMatches } from '@/lib/storage/matchStorage';
+import { loadSessionMatches, saveSessionMatches, clearSessionMatches, loadAppliedMatches, saveAppliedMatch } from '@/lib/storage/matchStorage';
 import { getStoredApiKey, getStoredApifyToken } from '@/lib/storage/apiKeyStorage';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export default function Home() {
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<'matches' | 'profile'>('matches');
+  const [activeTab, setActiveTab] = useState<'matches' | 'applied' | 'profile'>('matches');
   const [profile, setProfile] = useState<CandidateProfile>(DEFAULT_PROFILE);
   const [matches, setMatches] = useState<MatchResult[]>([]);
   const [sessions, setSessions] = useState<SearchSession[]>([]);
@@ -30,6 +31,7 @@ export default function Home() {
   const [apifyToken, setApifyToken] = useState<string | null>(null);
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
   const [isCreateSessionOpen, setIsCreateSessionOpen] = useState(false);
+  const [appliedMatches, setAppliedMatches] = useState<MatchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -45,6 +47,9 @@ export default function Home() {
         const key = getStoredApiKey();
         setApiKey(key);
         setApifyToken(getStoredApifyToken());
+
+        // Load global applied list
+        setAppliedMatches(loadAppliedMatches());
 
         const loadedSessions = await loadSessions(loadedProfile.id);
         if (loadedSessions.length > 0) {
@@ -73,14 +78,6 @@ export default function Home() {
     setApiKey(key);
     if (hasKey) {
       setSuccessMessage('OpenAI API key saved successfully!');
-      setTimeout(() => setSuccessMessage(null), 3000);
-    }
-  };
-
-  const handleApifyTokenUpdated = (hasToken: boolean) => {
-    setApifyToken(getStoredApifyToken());
-    if (hasToken) {
-      setSuccessMessage('Apify token saved successfully!');
       setTimeout(() => setSuccessMessage(null), 3000);
     }
   };
@@ -180,6 +177,57 @@ export default function Home() {
     }
   }, [profile, activeSessionId, sessions]);
 
+  const handleDismiss = useCallback(
+    (matchId: string) => {
+      const currentSessionId = activeSessionId || sessions[0]?.id;
+      setMatches((prev) => {
+        const updated = prev.map((m) => (m.id === matchId ? { ...m, status: 'dismissed' as const } : m));
+        if (currentSessionId) {
+          saveSessionMatches(currentSessionId, updated);
+        }
+        return updated;
+      });
+    },
+    [activeSessionId, sessions],
+  );
+
+  const handleApply = useCallback(
+    (match: MatchResult) => {
+      const currentSessionId = activeSessionId || sessions[0]?.id;
+      // Update status in session matches
+      setMatches((prev) => {
+        const updated = prev.map((m) => (m.id === match.id ? { ...m, status: 'applied' as const } : m));
+        if (currentSessionId) {
+          saveSessionMatches(currentSessionId, updated);
+        }
+        return updated;
+      });
+      // Add to global applied list
+      const appliedMatch = { ...match, status: 'applied' as const };
+      saveAppliedMatch(appliedMatch);
+      setAppliedMatches((prev) => {
+        const deduplicated = prev.filter((m) => m.job.id !== match.job.id);
+        return [appliedMatch, ...deduplicated];
+      });
+    },
+    [activeSessionId, sessions],
+  );
+
+  const handleRemoveFromApplied = useCallback(
+    (matchId: string) => {
+      const currentSessionId = activeSessionId || sessions[0]?.id;
+      setAppliedMatches((prev) => prev.filter((m) => m.id !== matchId && m.job.id !== matchId));
+      setMatches((prev) => {
+        const updated = prev.map((m) => (m.id === matchId ? { ...m, status: 'active' as const } : m));
+        if (currentSessionId) {
+          saveSessionMatches(currentSessionId, updated);
+        }
+        return updated;
+      });
+    },
+    [activeSessionId, sessions],
+  );
+
   const handleResetSession = useCallback(async () => {
     const currentSessionId = activeSessionId || sessions[0]?.id;
     const currentSession = sessions.find((s) => s.id === currentSessionId);
@@ -238,6 +286,7 @@ export default function Home() {
   }
 
   const currentCursor = activeSessionId ? cursors[activeSessionId] : undefined;
+  const activeMatchesCount = matches.filter((m) => !m.status || m.status === 'active').length;
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
@@ -247,12 +296,8 @@ export default function Home() {
         onTabChange={(tab) => {
           setActiveTab(tab);
         }}
-        hasApiKey={Boolean(apiKey)}
-        apiKey={apiKey}
-        hasApifyToken={Boolean(apifyToken)}
-        apifyToken={apifyToken}
-        onOpenKeyModal={() => setIsKeyModalOpen(true)}
-        matchCount={matches.length}
+        matchCount={activeMatchesCount}
+        appliedCount={appliedMatches.length}
       />
 
       {/* Main Content Area */}
@@ -289,7 +334,7 @@ export default function Home() {
         )}
 
         {/* Tab Views */}
-        {activeTab === 'matches' ? (
+        {activeTab === 'matches' && (
           <MatchesBoard
             matches={matches}
             isLoading={isLoading}
@@ -303,12 +348,25 @@ export default function Home() {
             onResetSession={handleResetSession}
             onCreateSession={() => setIsCreateSessionOpen(true)}
             onDeleteSession={handleDeleteSession}
+            onDismiss={handleDismiss}
+            onApply={handleApply}
           />
-        ) : (
+        )}
+
+        {activeTab === 'applied' && (
+          <AppliedBoard
+            appliedMatches={appliedMatches}
+            onRemoveFromApplied={handleRemoveFromApplied}
+          />
+        )}
+
+        {activeTab === 'profile' && (
           <ProfileForm
             initialProfile={profile}
             onSave={handleSaveProfile}
             isSaving={isSavingProfile}
+            onApiKeyChange={(key) => setApiKey(key)}
+            onApifyTokenChange={(token) => setApifyToken(token)}
           />
         )}
       </main>
@@ -318,7 +376,7 @@ export default function Home() {
         isOpen={isKeyModalOpen}
         onClose={() => setIsKeyModalOpen(false)}
         onKeyUpdated={handleKeyUpdated}
-        onApifyTokenUpdated={handleApifyTokenUpdated}
+        onSuccessScanTrigger={handleTriggerScan}
       />
 
       {/* Create Session Modal */}
@@ -337,3 +395,4 @@ export default function Home() {
     </div>
   );
 }
+

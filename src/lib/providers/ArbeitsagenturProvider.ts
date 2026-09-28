@@ -495,6 +495,7 @@ export class ArbeitsagenturProvider extends BaseJobProvider {
         workplaceType: item.workplaceType,
         seniority: item.seniority,
         requiredSkills: item.requiredSkills,
+        spokenLanguages: item.spokenLanguages,
         salaryRange: item.salaryRange,
         url: `${ARBEITSAGENTUR_DETAIL_URL_BASE}/${item.referenznummer}`,
         publishedAt: itemTimestamp,

@@ -51,4 +51,48 @@ describe('Pre-filter matching rules', () => {
     assert.strictEqual(filtered.length, 1);
     assert.strictEqual(filtered[0].id, 'job_1');
   });
+
+  it('passes when candidate meets or exceeds required spoken language CEFR level', () => {
+    const profileWithGerman: CandidateProfile = {
+      ...baseProfile,
+      spokenLanguages: [
+        { language: 'English', level: 'C2' },
+        { language: 'German', level: 'C1' },
+      ],
+    };
+    const jobRequiringGerman: JobListing = {
+      ...remoteJuniorJob,
+      spokenLanguages: [{ language: 'German', level: 'B2' }],
+    };
+    const result = evaluateHardConstraints(profileWithGerman, jobRequiringGerman);
+    assert.strictEqual(result.passed, true);
+  });
+
+  it('rejects when candidate lacks a required spoken language', () => {
+    const profileWithEnglishOnly: CandidateProfile = {
+      ...baseProfile,
+      spokenLanguages: [{ language: 'English', level: 'C2' }],
+    };
+    const jobRequiringGerman: JobListing = {
+      ...remoteJuniorJob,
+      spokenLanguages: [{ language: 'German', level: 'B1' }],
+    };
+    const result = evaluateHardConstraints(profileWithEnglishOnly, jobRequiringGerman);
+    assert.strictEqual(result.passed, false);
+    assert.ok(result.reason?.includes('missing required spoken language'));
+  });
+
+  it('rejects when candidate CEFR level is below job required level', () => {
+    const profileWithLowGerman: CandidateProfile = {
+      ...baseProfile,
+      spokenLanguages: [{ language: 'German', level: 'A2' }],
+    };
+    const jobRequiringGerman: JobListing = {
+      ...remoteJuniorJob,
+      spokenLanguages: [{ language: 'German', level: 'B2' }],
+    };
+    const result = evaluateHardConstraints(profileWithLowGerman, jobRequiringGerman);
+    assert.strictEqual(result.passed, false);
+    assert.ok(result.reason?.includes('below required level'));
+  });
 });

@@ -85,12 +85,14 @@ describe('JustJoinProvider normalization', () => {
       seniority: 'mid',
       workMode: 'remote',
       location: 'Warsaw',
+      spokenLanguages: [{ language: 'English', level: 'C1' }],
     });
     const fp2 = computeProviderFingerprint({
       skills: ['typescript', 'react '],
       seniority: 'mid',
       workMode: 'remote',
       location: 'Warsaw',
+      spokenLanguages: [{ language: 'english', level: 'C1' }],
     });
     assert.strictEqual(fp1, fp2);
 
@@ -99,8 +101,18 @@ describe('JustJoinProvider normalization', () => {
       seniority: 'mid',
       workMode: 'office',
       location: 'Warsaw',
+      spokenLanguages: [{ language: 'English', level: 'C1' }],
     });
     assert.notStrictEqual(fp1, fpDifferentWorkMode);
+
+    const fpDifferentLanguage = computeProviderFingerprint({
+      skills: ['React', 'TypeScript'],
+      seniority: 'mid',
+      workMode: 'remote',
+      location: 'Warsaw',
+      spokenLanguages: [{ language: 'German', level: 'B2' }],
+    });
+    assert.notStrictEqual(fp1, fpDifferentLanguage);
   });
 });
 

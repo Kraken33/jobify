@@ -1,4 +1,4 @@
-import { SeniorityLevel } from '@/types';
+import { SeniorityLevel, SpokenLanguage } from '@/types';
 
 export interface ArbeitsagenturFallbackTemplate {
   id: string;
@@ -9,6 +9,7 @@ export interface ArbeitsagenturFallbackTemplate {
   workplaceType: string;
   seniority: SeniorityLevel;
   requiredSkills: string[];
+  spokenLanguages?: SpokenLanguage[];
   salaryRange: { min: number; max: number; currency: string };
   referenznummer: string;
   description: string;
@@ -32,6 +33,10 @@ export const ARBEITSAGENTUR_FALLBACK_JOB_POOL: ArbeitsagenturFallbackTemplate[] 
     workplaceType: 'remote',
     seniority: 'senior',
     requiredSkills: ['TypeScript', 'React', 'Next.js', 'Node.js'],
+    spokenLanguages: [
+      { language: 'German', level: 'B2' },
+      { language: 'English', level: 'B2' },
+    ],
     salaryRange: { min: 70000, max: 90000, currency: 'EUR' },
     referenznummer: '10000-100001-S',
     description:
@@ -46,6 +51,7 @@ export const ARBEITSAGENTUR_FALLBACK_JOB_POOL: ArbeitsagenturFallbackTemplate[] 
     workplaceType: 'hybrid',
     seniority: 'mid',
     requiredSkills: ['Java', 'Spring Boot', 'PostgreSQL', 'Docker'],
+    spokenLanguages: [{ language: 'German', level: 'C1' }],
     salaryRange: { min: 60000, max: 75000, currency: 'EUR' },
     referenznummer: '10000-100002-S',
     description:

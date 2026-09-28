@@ -1,8 +1,24 @@
-import { CandidateProfile, JobListing } from '@/types';
+import { CandidateProfile, JobListing, SpokenLanguageLevel } from '@/types';
 
 export interface PreFilterResult {
   passed: boolean;
   reason?: string;
+}
+
+export const CEFR_LEVEL_RANK: Record<string, number> = {
+  A1: 1,
+  A2: 2,
+  B1: 3,
+  B2: 4,
+  C1: 5,
+  C2: 6,
+  NATIVE: 7,
+};
+
+export function getCefrRank(level?: SpokenLanguageLevel | string): number {
+  if (!level) return 0;
+  const normalized = level.trim().toUpperCase();
+  return CEFR_LEVEL_RANK[normalized] ?? 0;
 }
 
 export function evaluateHardConstraints(profile: CandidateProfile, job: JobListing): PreFilterResult {
@@ -25,6 +41,33 @@ export function evaluateHardConstraints(profile: CandidateProfile, job: JobListi
       job.salaryRange.max < profile.minSalary * 0.75
     ) {
       return { passed: false, reason: 'Salary range is below candidate minimum threshold' };
+    }
+  }
+
+  // 4. Spoken Language & CEFR Level Check
+  if (job.spokenLanguages && job.spokenLanguages.length > 0) {
+    const candidateLangs = profile.spokenLanguages || [];
+    for (const reqLang of job.spokenLanguages) {
+      const matchedCandLang = candidateLangs.find(
+        (cl) => cl.language.trim().toLowerCase() === reqLang.language.trim().toLowerCase()
+      );
+
+      if (!matchedCandLang) {
+        return {
+          passed: false,
+          reason: `Candidate missing required spoken language: ${reqLang.language}`,
+        };
+      }
+
+      const candRank = getCefrRank(matchedCandLang.level);
+      const reqRank = getCefrRank(reqLang.level);
+
+      if (candRank < reqRank) {
+        return {
+          passed: false,
+          reason: `Candidate ${reqLang.language} level (${matchedCandLang.level}) is below required level (${reqLang.level})`,
+        };
+      }
     }
   }
 

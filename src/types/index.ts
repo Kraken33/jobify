@@ -1,6 +1,13 @@
 export type SeniorityLevel = 'junior' | 'mid' | 'senior' | 'lead';
 export type WorkMode = 'remote' | 'hybrid' | 'office' | 'any';
 
+export type SpokenLanguageLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2' | 'Native';
+
+export interface SpokenLanguage {
+  language: string;
+  level: SpokenLanguageLevel;
+}
+
 export interface CandidateProfile {
   id?: string;
   targetRole: string;
@@ -10,6 +17,7 @@ export interface CandidateProfile {
   preferredLocation?: string;
   minSalary?: number;
   salaryCurrency?: string;
+  spokenLanguages?: SpokenLanguage[];
   experienceSummary: string;
   createdAt?: string;
   updatedAt?: string;
@@ -33,6 +41,7 @@ export interface JobListing {
   workplaceType?: string;
   seniority: SeniorityLevel | 'all';
   requiredSkills: string[];
+  spokenLanguages?: SpokenLanguage[];
   salaryRange?: SalaryRange;
   url: string;
   publishedAt?: string;
@@ -57,6 +66,7 @@ export interface SearchCriteria {
   seniority?: SeniorityLevel;
   workMode?: WorkMode;
   location?: string;
+  spokenLanguages?: SpokenLanguage[];
   limit?: number;
   publishedAtCursor?: string | null;
   seenJobIds?: string[];
@@ -72,6 +82,7 @@ export interface SearchSession {
   seniority: SeniorityLevel;
   workMode: WorkMode;
   location?: string;
+  spokenLanguages?: SpokenLanguage[];
   createdAt: string;
   updatedAt: string;
 }
@@ -99,6 +110,7 @@ export interface MatchResult {
   job: JobListing;
   evaluation: MatchEvaluation;
   createdAt: string;
+  status?: 'active' | 'dismissed' | 'applied';
 }
 
 export interface JobProvider {

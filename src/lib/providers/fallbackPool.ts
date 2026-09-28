@@ -1,4 +1,4 @@
-import { SeniorityLevel } from '@/types';
+import { SeniorityLevel, SpokenLanguage } from '@/types';
 
 export interface FallbackTemplate {
   id: string;
@@ -9,6 +9,7 @@ export interface FallbackTemplate {
   workplaceType: string;
   seniority: SeniorityLevel;
   requiredSkills: string[];
+  spokenLanguages?: SpokenLanguage[];
   salaryRange: { min: number; max: number; currency: string };
   slug: string;
   description: string;
@@ -24,6 +25,7 @@ export const FALLBACK_JOB_POOL: FallbackTemplate[] = [
     workplaceType: 'remote',
     seniority: 'senior',
     requiredSkills: ['TypeScript', 'React', 'Next.js', 'Node.js', 'PostgreSQL'],
+    spokenLanguages: [{ language: 'English', level: 'B2' }],
     salaryRange: { min: 20000, max: 26000, currency: 'PLN' },
     slug: 'demo-senior-react-developer',
     description: 'Lead frontend architecture and full-stack feature delivery on Next.js and Supabase/PostgreSQL.',
@@ -37,6 +39,10 @@ export const FALLBACK_JOB_POOL: FallbackTemplate[] = [
     workplaceType: 'remote',
     seniority: 'mid',
     requiredSkills: ['TypeScript', 'React', 'Node.js', 'Docker', 'AWS'],
+    spokenLanguages: [
+      { language: 'English', level: 'C1' },
+      { language: 'Polish', level: 'B2' },
+    ],
     salaryRange: { min: 16000, max: 22000, currency: 'PLN' },
     slug: 'demo-mid-fullstack-engineer',
     description: 'Join our product squad developing real-time financial dashboards. Requires React, TypeScript, and Node.js with AWS cloud deployments.',

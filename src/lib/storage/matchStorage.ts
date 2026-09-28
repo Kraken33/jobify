@@ -1,6 +1,9 @@
 import { MatchResult } from '@/types';
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
+const APPLIED_STORAGE_KEY = 'jobify:applied';
+const APPLIED_MAX_ENTRIES = 200;
+
 export function getMatchStorageKey(sessionId: string): string {
   return `jobify:matches:${sessionId}`;
 }
@@ -50,6 +53,7 @@ export async function loadSessionMatches(sessionId: string): Promise<MatchResult
             summary: row.summary || '',
           },
           createdAt: row.created_at,
+          // status absent in DB rows defaults to 'active' at render time
         }));
       }
     } catch (err) {
@@ -75,6 +79,7 @@ export async function saveSessionMatches(sessionId: string, matches: MatchResult
   if (typeof window !== 'undefined') {
     try {
       // Cap at 100 most recent items to avoid localStorage quota issues
+      // status field is preserved as-is in the serialised object
       const capped = matches.slice(0, 100);
       localStorage.setItem(getMatchStorageKey(sessionId), JSON.stringify(capped));
     } catch {
@@ -101,5 +106,49 @@ export async function clearSessionMatches(sessionId: string): Promise<void> {
     } catch (err) {
       console.warn('Failed to clear session matches from Supabase:', err);
     }
+  }
+}
+
+// ─── Global Applied Store ────────────────────────────────────────────────────
+// Stored in localStorage under a single global key, independent of sessions.
+
+export function loadAppliedMatches(): MatchResult[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(APPLIED_STORAGE_KEY);
+    if (raw) {
+      return JSON.parse(raw) as MatchResult[];
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return [];
+}
+
+export function saveAppliedMatch(match: MatchResult): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const existing = loadAppliedMatches();
+    // Remove any prior entry for the same job to avoid duplicates
+    const deduplicated = existing.filter((m) => m.job.id !== match.job.id);
+    // Prepend (most recent first) and cap
+    const updated = [{ ...match, status: 'applied' as const }, ...deduplicated].slice(
+      0,
+      APPLIED_MAX_ENTRIES,
+    );
+    localStorage.setItem(APPLIED_STORAGE_KEY, JSON.stringify(updated));
+  } catch {
+    // Ignore quota errors
+  }
+}
+
+export function removeAppliedMatch(matchId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const existing = loadAppliedMatches();
+    const updated = existing.filter((m) => m.id !== matchId);
+    localStorage.setItem(APPLIED_STORAGE_KEY, JSON.stringify(updated));
+  } catch {
+    // Ignore
   }
 }
