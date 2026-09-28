@@ -1,69 +1,200 @@
-import Image from "next/image";
+'use client';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { CandidateProfile, MatchResult } from '@/types';
+import { Navbar } from '@/components/Navbar';
+import { ProfileForm } from '@/components/ProfileForm';
+import { MatchesBoard } from '@/components/MatchesBoard';
+import { ApiKeyModal } from '@/components/ApiKeyModal';
+import {
+  loadCandidateProfile,
+  saveCandidateProfile,
+  DEFAULT_PROFILE,
+} from '@/lib/storage/profileStorage';
+import { getStoredApiKey } from '@/lib/storage/apiKeyStorage';
+import { AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export default function Home() {
+  const [mounted, setMounted] = useState(false);
+  const [activeTab, setActiveTab] = useState<'matches' | 'profile'>('matches');
+  const [profile, setProfile] = useState<CandidateProfile>(DEFAULT_PROFILE);
+  const [matches, setMatches] = useState<MatchResult[]>([]);
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Initialize profile & key from local/Supabase storage after client mount
+  useEffect(() => {
+    setMounted(true);
+    const init = async () => {
+      try {
+        const loadedProfile = await loadCandidateProfile();
+        setProfile(loadedProfile);
+        const key = getStoredApiKey();
+        setApiKey(key);
+      } catch (err) {
+        console.error('Failed to initialize local data:', err);
+      }
+    };
+    init();
+  }, []);
+
+  const handleKeyUpdated = (hasKey: boolean) => {
+    const key = getStoredApiKey();
+    setApiKey(key);
+    if (hasKey) {
+      setSuccessMessage('OpenAI API key saved successfully!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    }
+  };
+
+  const handleSaveProfile = async (updated: CandidateProfile) => {
+    setIsSavingProfile(true);
+    try {
+      const saved = await saveCandidateProfile(updated);
+      setProfile(saved);
+      setSuccessMessage('Profile preferences saved!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch {
+      setErrorMessage('Failed to save profile.');
+      setTimeout(() => setErrorMessage(null), 4000);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleTriggerScan = useCallback(async () => {
+    const key = getStoredApiKey();
+    if (!key) {
+      setIsKeyModalOpen(true);
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch('/api/match', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-OpenAI-Key': key,
+        },
+        body: JSON.stringify({
+          profile,
+          providerId: 'justjoin',
+          limit: 20,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to scan and match jobs.');
+      }
+
+      setMatches(data.matches || []);
+      setActiveTab('matches');
+
+      if (data.matches?.length > 0) {
+        setSuccessMessage(`Successfully evaluated ${data.matches.length} positions!`);
+        setTimeout(() => setSuccessMessage(null), 3500);
+      } else if (data.message) {
+        setErrorMessage(data.message);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error evaluating jobs';
+      setErrorMessage(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [profile]);
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center">
+        <div className="flex items-center gap-3 text-neutral-400 text-sm animate-pulse">
+          <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-ping" />
+          <span>Loading Jobify...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
+      {/* Top Navigation */}
+      <Navbar
+        activeTab={activeTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab);
+        }}
+        hasApiKey={Boolean(apiKey)}
+        apiKey={apiKey}
+        onOpenKeyModal={() => setIsKeyModalOpen(true)}
+        matchCount={matches.length}
+      />
+
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8">
+        {/* Banner Alert Toasts */}
+        {errorMessage && (
+          <div className="mb-6 p-4 rounded-xl bg-red-950/60 border border-red-800/80 text-xs text-red-200 flex items-center justify-between animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+            <button
+              onClick={() => setErrorMessage(null)}
+              className="text-red-400 hover:text-red-200 font-bold ml-4"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+              ✕
+            </button>
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="mb-6 p-4 rounded-xl bg-emerald-950/60 border border-emerald-800/80 text-xs text-emerald-200 flex items-center justify-between animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{successMessage}</span>
+            </div>
+            <button
+              onClick={() => setSuccessMessage(null)}
+              className="text-emerald-400 hover:text-emerald-200 font-bold ml-4"
             >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Tab Views */}
+        {activeTab === 'matches' ? (
+          <MatchesBoard
+            matches={matches}
+            isLoading={isLoading}
+            onTriggerScan={handleTriggerScan}
+            hasApiKey={Boolean(apiKey)}
+            onOpenKeyModal={() => setIsKeyModalOpen(true)}
+          />
+        ) : (
+          <ProfileForm
+            initialProfile={profile}
+            onSave={handleSaveProfile}
+            isSaving={isSavingProfile}
+          />
+        )}
       </main>
+
+      {/* API Key Modal */}
+      <ApiKeyModal
+        isOpen={isKeyModalOpen}
+        onClose={() => setIsKeyModalOpen(false)}
+        onKeyUpdated={handleKeyUpdated}
+      />
     </div>
   );
 }
