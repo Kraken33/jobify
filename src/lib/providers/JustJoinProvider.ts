@@ -1,5 +1,6 @@
 import { BaseJobProvider } from './JobProvider';
-import { JobListing, SearchCriteria, SeniorityLevel } from '@/types';
+import { JobListing, ProviderResult, SearchCriteria, SeniorityLevel } from '@/types';
+import { FALLBACK_JOB_POOL } from './fallbackPool';
 
 interface JustJoinRawOffer {
   id?: string | number;
@@ -43,7 +44,7 @@ export class JustJoinProvider extends BaseJobProvider {
 
   private baseUrl = 'https://api.justjoin.it/v2/user-panel/offers';
 
-  async searchJobs(criteria: SearchCriteria): Promise<JobListing[]> {
+  async searchJobs(criteria: SearchCriteria): Promise<ProviderResult> {
     const limit = criteria.limit || 25;
     const url = new URL(this.baseUrl);
 
@@ -93,11 +94,34 @@ export class JustJoinProvider extends BaseJobProvider {
         ? json.data
         : [];
 
-      return rawOffers.map((raw) => this.normalizeOffer(raw));
+      let listings = rawOffers.map((raw) => this.normalizeOffer(raw));
+
+      if (criteria.publishedAtCursor) {
+        const cursorTime = new Date(criteria.publishedAtCursor).getTime();
+        listings = listings.filter((l) => {
+          if (!l.publishedAt) return false;
+          return new Date(l.publishedAt).getTime() > cursorTime;
+        });
+      }
+
+      let newestPublishedAt: string | null = null;
+      for (const item of listings) {
+        if (item.publishedAt) {
+          if (!newestPublishedAt || new Date(item.publishedAt).getTime() > new Date(newestPublishedAt).getTime()) {
+            newestPublishedAt = item.publishedAt;
+          }
+        }
+      }
+
+      return {
+        listings,
+        nextCursor: newestPublishedAt ? { publishedAtCursor: newestPublishedAt } : null,
+        fallback: false,
+      };
     } catch (error) {
       // In case the live API is blocked or offline during test/demo, provide structured fallback
       console.warn('JustJoin API fetch warning:', error);
-      return this.getSampleFallbackListings(criteria);
+      return this.getSampleFallbackListings(criteria, 1);
     }
   }
 
@@ -185,54 +209,43 @@ export class JustJoinProvider extends BaseJobProvider {
     return null;
   }
 
-  public getSampleFallbackListings(criteria: SearchCriteria): JobListing[] {
+  public getSampleFallbackListings(criteria: SearchCriteria, page: number = 1): ProviderResult {
     const userRole = criteria.skills?.[0] || 'Full Stack Developer';
-    return [
-      {
-        id: 'justjoin_demo_1',
+    const now = Date.now();
+
+    const pageSize = 3;
+    const totalItems = FALLBACK_JOB_POOL.length;
+    const effectivePage = Math.max(1, page);
+    const startIndex = ((effectivePage - 1) * pageSize) % totalItems;
+    const pageItems = FALLBACK_JOB_POOL.slice(startIndex, startIndex + pageSize);
+
+    const baseTimestamp = now - (effectivePage - 1) * 3600 * 1000 * 24;
+
+    const listings: JobListing[] = pageItems.map((item, idx) => {
+      const itemTimestamp = new Date(baseTimestamp - idx * 60000).toISOString();
+      return {
+        id: `justjoin_demo_p${effectivePage}_${item.id}`,
         provider: 'justjoin',
-        title: `Senior ${userRole} (React / Next.js)`,
-        company: 'CloudScale Solutions',
-        city: 'Remote',
-        isRemote: true,
-        workplaceType: 'remote',
-        seniority: 'senior',
-        requiredSkills: ['TypeScript', 'React', 'Next.js', 'Node.js', 'PostgreSQL'],
-        salaryRange: { min: 20000, max: 26000, currency: 'PLN' },
-        url: 'https://justjoin.it/offers/demo-senior-react-developer',
-        publishedAt: new Date().toISOString(),
-        description: 'Looking for a Senior Developer to lead frontend architecture and full-stack feature delivery on Next.js and Supabase/PostgreSQL.',
-      },
-      {
-        id: 'justjoin_demo_2',
-        provider: 'justjoin',
-        title: `Mid Full Stack Engineer`,
-        company: 'NextGen Fintech',
-        city: 'Warsaw / Remote',
-        isRemote: true,
-        workplaceType: 'remote',
-        seniority: 'mid',
-        requiredSkills: ['TypeScript', 'React', 'Node.js', 'Docker', 'AWS'],
-        salaryRange: { min: 16000, max: 22000, currency: 'PLN' },
-        url: 'https://justjoin.it/offers/demo-mid-fullstack-engineer',
-        publishedAt: new Date().toISOString(),
-        description: 'Join our product squad developing real-time financial dashboards. Requires React, TypeScript, and Node.js with AWS cloud deployments.',
-      },
-      {
-        id: 'justjoin_demo_3',
-        provider: 'justjoin',
-        title: `Frontend Specialist`,
-        company: 'Apex Digital Studio',
-        city: 'Krakow',
-        isRemote: false,
-        workplaceType: 'office',
-        seniority: 'mid',
-        requiredSkills: ['JavaScript', 'React', 'CSS', 'HTML', 'Figma'],
-        salaryRange: { min: 14000, max: 18000, currency: 'PLN' },
-        url: 'https://justjoin.it/offers/demo-frontend-specialist',
-        publishedAt: new Date().toISOString(),
-        description: 'Design and build high-performance user interfaces for international clients with rich CSS animations and React.',
-      },
-    ];
+        title: item.titleTemplate(userRole),
+        company: item.company,
+        city: item.city,
+        isRemote: item.isRemote,
+        workplaceType: item.workplaceType,
+        seniority: item.seniority,
+        requiredSkills: item.requiredSkills,
+        salaryRange: item.salaryRange,
+        url: `https://justjoin.it/offers/${item.slug}`,
+        publishedAt: itemTimestamp,
+        description: item.description,
+      };
+    });
+
+    const newestPublishedAt = listings[0]?.publishedAt || new Date(baseTimestamp).toISOString();
+
+    return {
+      listings,
+      nextCursor: { publishedAtCursor: newestPublishedAt },
+      fallback: true,
+    };
   }
 }

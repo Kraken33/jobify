@@ -1,9 +1,6 @@
-# Job Provider Ingestion Specification
+# Spec Delta
 
-## Purpose
-Defines an extensible job provider ingestion interface and a JustJoin.it adapter to fetch, parse, and normalize job listings.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Extensible Job Provider Adapter Interface
 The system SHALL define a standardized provider contract that accepts candidate search criteria (technology keywords, seniority level, remote preferences, and an optional pagination cursor) and returns a result envelope containing normalized job listings and an updated cursor for subsequent fetches. The cursor SHALL carry the `published_at` timestamp of the newest job in the returned batch, enabling the next call to request only jobs published after that point.
@@ -19,6 +16,8 @@ The system SHALL define a standardized provider contract that accepts candidate 
 #### Scenario: Provider called without a cursor
 - **WHEN** a provider is called with no cursor (null or absent `publishedAtCursor`)
 - **THEN** it fetches the full current pool of listings without a date filter, and the returned `nextCursor` is set to the `published_at` of the newest listing in the result
+
+## MODIFIED Requirements
 
 ### Requirement: JustJoin.it Provider Integration
 The system SHALL implement a provider adapter for JustJoin.it that queries its public endpoints based on user tech stack tags, seniority levels, and remote work preferences, and that honours the pagination cursor by appending a date filter when one is present. When the live API is unavailable, the adapter SHALL use a deterministic multi-page fallback generator seeded by the requested page number, so that successive paginated calls return distinct listings.
@@ -38,4 +37,3 @@ The system SHALL implement a provider adapter for JustJoin.it that queries its p
 #### Scenario: Handling provider downtime or network error
 - **WHEN** the JustJoin.it endpoint returns a non-200 status or times out
 - **THEN** the adapter falls back to the deterministic multi-page generator without crashing the application and includes a `fallback: true` flag in the `ProviderResult`
-

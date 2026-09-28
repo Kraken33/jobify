@@ -39,6 +39,16 @@ export interface JobListing {
   description?: string;
 }
 
+export interface ProviderCursor {
+  publishedAtCursor: string | null;
+}
+
+export interface ProviderResult {
+  listings: JobListing[];
+  nextCursor: ProviderCursor | null;
+  fallback?: boolean;
+}
+
 export interface SearchCriteria {
   keywords?: string[];
   skills?: string[];
@@ -46,6 +56,30 @@ export interface SearchCriteria {
   workMode?: WorkMode;
   location?: string;
   limit?: number;
+  publishedAtCursor?: string | null;
+  seenJobIds?: string[];
+}
+
+export interface SearchSession {
+  id: string;
+  profileId?: string;
+  name: string;
+  provider: string;
+  skills: string[];
+  seniority: SeniorityLevel;
+  workMode: WorkMode;
+  location?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScanCheckpoint {
+  sessionId: string;
+  providerId: string;
+  providerFingerprint: string;
+  publishedAtCursor: string | null;
+  seenJobIds: string[];
+  lastScanAt: string;
 }
 
 export interface MatchEvaluation {
@@ -58,6 +92,7 @@ export interface MatchEvaluation {
 
 export interface MatchResult {
   id: string;
+  sessionId?: string;
   job: JobListing;
   evaluation: MatchEvaluation;
   createdAt: string;
@@ -66,5 +101,6 @@ export interface MatchResult {
 export interface JobProvider {
   name: string;
   id: string;
-  searchJobs(criteria: SearchCriteria): Promise<JobListing[]>;
+  searchJobs(criteria: SearchCriteria): Promise<ProviderResult>;
 }
+

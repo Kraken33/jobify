@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { CandidateProfile, MatchResult } from '@/types';
+import { CandidateProfile, MatchResult, SearchSession, ProviderCursor } from '@/types';
 import { Navbar } from '@/components/Navbar';
 import { ProfileForm } from '@/components/ProfileForm';
 import { MatchesBoard } from '@/components/MatchesBoard';
@@ -11,6 +11,8 @@ import {
   saveCandidateProfile,
   DEFAULT_PROFILE,
 } from '@/lib/storage/profileStorage';
+import { loadSessions, createImplicitSession, saveSession } from '@/lib/storage/sessionStorage';
+import { clearCheckpoint } from '@/lib/storage/checkpointStorage';
 import { getStoredApiKey } from '@/lib/storage/apiKeyStorage';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 
@@ -19,6 +21,9 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'matches' | 'profile'>('matches');
   const [profile, setProfile] = useState<CandidateProfile>(DEFAULT_PROFILE);
   const [matches, setMatches] = useState<MatchResult[]>([]);
+  const [sessions, setSessions] = useState<SearchSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [cursors, setCursors] = useState<Record<string, ProviderCursor | null>>({});
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -26,7 +31,7 @@ export default function Home() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Initialize profile & key from local/Supabase storage after client mount
+  // Initialize profile, sessions & key from local/Supabase storage after client mount
   useEffect(() => {
     setMounted(true);
     const init = async () => {
@@ -35,6 +40,17 @@ export default function Home() {
         setProfile(loadedProfile);
         const key = getStoredApiKey();
         setApiKey(key);
+
+        const loadedSessions = await loadSessions(loadedProfile.id);
+        if (loadedSessions.length > 0) {
+          setSessions(loadedSessions);
+          setActiveSessionId(loadedSessions[0].id);
+        } else {
+          const implicit = createImplicitSession(loadedProfile);
+          setSessions([implicit]);
+          setActiveSessionId(implicit.id);
+          await saveSession(implicit);
+        }
       } catch (err) {
         console.error('Failed to initialize local data:', err);
       }
@@ -76,6 +92,8 @@ export default function Home() {
     setIsLoading(true);
     setErrorMessage(null);
 
+    const currentSessionId = activeSessionId || sessions[0]?.id;
+
     try {
       const response = await fetch('/api/match', {
         method: 'POST',
@@ -86,6 +104,7 @@ export default function Home() {
         body: JSON.stringify({
           profile,
           providerId: 'justjoin',
+          sessionId: currentSessionId,
           limit: 20,
         }),
       });
@@ -96,11 +115,27 @@ export default function Home() {
         throw new Error(data.error || 'Failed to scan and match jobs.');
       }
 
-      setMatches(data.matches || []);
+      const returnedMatches: MatchResult[] = data.matches || [];
+      if (returnedMatches.length > 0) {
+        // Append new matches, avoiding duplicates by job id
+        setMatches((prev) => {
+          const existingIds = new Set(prev.map((m) => m.job.id));
+          const newUnique = returnedMatches.filter((m) => !existingIds.has(m.job.id));
+          return [...prev, ...newUnique];
+        });
+      }
+
+      if (currentSessionId && data.nextCursor !== undefined) {
+        setCursors((prev) => ({
+          ...prev,
+          [currentSessionId]: data.nextCursor,
+        }));
+      }
+
       setActiveTab('matches');
 
-      if (data.matches?.length > 0) {
-        setSuccessMessage(`Successfully evaluated ${data.matches.length} positions!`);
+      if (returnedMatches.length > 0) {
+        setSuccessMessage(`Successfully evaluated ${returnedMatches.length} positions!`);
         setTimeout(() => setSuccessMessage(null), 3500);
       } else if (data.message) {
         setErrorMessage(data.message);
@@ -111,7 +146,21 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
-  }, [profile]);
+  }, [profile, activeSessionId, sessions]);
+
+  const handleResetSession = useCallback(async () => {
+    const currentSessionId = activeSessionId || sessions[0]?.id;
+    setMatches([]);
+    if (currentSessionId) {
+      setCursors((prev) => ({
+        ...prev,
+        [currentSessionId]: null,
+      }));
+      await clearCheckpoint(currentSessionId, 'justjoin');
+      setSuccessMessage('Session reset. Next scan will fetch from the beginning.');
+      setTimeout(() => setSuccessMessage(null), 3500);
+    }
+  }, [activeSessionId, sessions]);
 
   if (!mounted) {
     return (
@@ -123,6 +172,8 @@ export default function Home() {
       </div>
     );
   }
+
+  const currentCursor = activeSessionId ? cursors[activeSessionId] : undefined;
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
@@ -179,6 +230,11 @@ export default function Home() {
             onTriggerScan={handleTriggerScan}
             hasApiKey={Boolean(apiKey)}
             onOpenKeyModal={() => setIsKeyModalOpen(true)}
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            onSessionChange={(sId) => setActiveSessionId(sId)}
+            nextCursor={currentCursor}
+            onResetSession={handleResetSession}
           />
         ) : (
           <ProfileForm

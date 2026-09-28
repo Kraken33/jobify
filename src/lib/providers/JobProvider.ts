@@ -1,16 +1,16 @@
-import { JobListing, SearchCriteria } from '@/types';
+import { SearchCriteria, ProviderResult } from '@/types';
 
 export interface IJobProvider {
   id: string;
   name: string;
-  searchJobs(criteria: SearchCriteria): Promise<JobListing[]>;
+  searchJobs(criteria: SearchCriteria): Promise<ProviderResult>;
 }
 
 export abstract class BaseJobProvider implements IJobProvider {
   abstract id: string;
   abstract name: string;
 
-  abstract searchJobs(criteria: SearchCriteria): Promise<JobListing[]>;
+  abstract searchJobs(criteria: SearchCriteria): Promise<ProviderResult>;
 
   protected normalizeSkill(skill: string): string {
     return skill.trim().toLowerCase();
@@ -27,3 +27,4 @@ export abstract class BaseJobProvider implements IJobProvider {
       .filter(Boolean);
   }
 }
+

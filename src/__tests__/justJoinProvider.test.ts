@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { JustJoinProvider } from '../lib/providers/JustJoinProvider';
+import { computeProviderFingerprint } from '../lib/providers/fingerprint';
 
 describe('JustJoinProvider normalization', () => {
   const provider = new JustJoinProvider();
@@ -60,4 +61,45 @@ describe('JustJoinProvider normalization', () => {
     assert.strictEqual(normalized.salaryRange, undefined);
     assert.strictEqual(normalized.url.startsWith('https://justjoin.it/offers/'), true);
   });
+
+  it('multi-page fallback returns non-overlapping listings for page 1 and page 2', () => {
+    const criteria = { skills: ['React', 'TypeScript'] };
+    const res1 = provider.getSampleFallbackListings(criteria, 1);
+    const res2 = provider.getSampleFallbackListings(criteria, 2);
+
+    assert.strictEqual(res1.fallback, true);
+    assert.strictEqual(res2.fallback, true);
+    assert.ok(res1.nextCursor?.publishedAtCursor);
+    assert.ok(res2.nextCursor?.publishedAtCursor);
+
+    const ids1 = new Set(res1.listings.map((l) => l.id));
+    for (const l of res2.listings) {
+      assert.strictEqual(ids1.has(l.id), false, `Page 1 and Page 2 shouldn't overlap: ${l.id}`);
+    }
+  });
+
+  it('fingerprint is deterministic and sensitive to field changes', () => {
+    const fp1 = computeProviderFingerprint({
+      skills: ['React', 'TypeScript'],
+      seniority: 'mid',
+      workMode: 'remote',
+      location: 'Warsaw',
+    });
+    const fp2 = computeProviderFingerprint({
+      skills: ['typescript', 'react '],
+      seniority: 'mid',
+      workMode: 'remote',
+      location: 'Warsaw',
+    });
+    assert.strictEqual(fp1, fp2);
+
+    const fpDifferentWorkMode = computeProviderFingerprint({
+      skills: ['React', 'TypeScript'],
+      seniority: 'mid',
+      workMode: 'office',
+      location: 'Warsaw',
+    });
+    assert.notStrictEqual(fp1, fpDifferentWorkMode);
+  });
 });
+

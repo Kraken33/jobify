@@ -1,9 +1,6 @@
-# Job Matching Engine Specification
+# Spec Delta
 
-## Purpose
-Evaluates candidate profiles against fetched job listings using rule-based pre-filtering and OpenAI structured analysis to present ranked opportunities with application links.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Pre-filtering Against Hard Constraints
 The system SHALL filter out candidate listings that violate non-negotiable user constraints (such as remote work requirement or incompatible seniority bounds) before invoking the LLM. It SHALL additionally skip any listing whose provider job ID is present in the active session's `seenJobIds` set, preventing duplicate AI evaluations and associated token costs.
@@ -33,6 +30,8 @@ The system SHALL present scored matches in descending order of fit score, highli
 #### Scenario: Viewing ranked matches
 - **WHEN** an evaluation batch finishes
 - **THEN** the user interface displays the job cards ordered from highest fit score to lowest, each containing a direct link opening the posting on JustJoin.it in a new tab
+
+## ADDED Requirements
 
 ### Requirement: Session-Scoped Scan Execution
 The system SHALL accept a `sessionId` on the scan endpoint to identify the active search session. It SHALL load the session's checkpoint (provider fingerprint, `publishedAtCursor`, `seenJobIds`), pass the cursor to the provider adapter, and persist the updated checkpoint and seen-ID set after each successful scan.
@@ -66,4 +65,3 @@ The system SHALL persist scan checkpoints (fingerprint, cursor, seenJobIds, last
 #### Scenario: Checkpoint saved to localStorage in guest mode
 - **WHEN** a scan completes and Supabase is not configured
 - **THEN** the system serialises the checkpoint to `localStorage` under a key scoped to the session ID, so the cursor persists across page reloads without requiring a database
-

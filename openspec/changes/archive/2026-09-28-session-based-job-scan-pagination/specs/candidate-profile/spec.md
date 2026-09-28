@@ -1,9 +1,6 @@
-# Candidate Profile Specification
+# Spec Delta
 
-## Purpose
-Provides user profile configuration for job preferences and secure client-side storage for the user's OpenAI API key.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Candidate Profile Form Configuration
 The system SHALL provide a candidate profile form allowing users to specify their identity and LLM scoring context: target role, seniority level, primary tech stack skills (as a default template for new sessions), salary expectations, and a summary of their professional background. Provider-specific search parameters (skills, work mode, location) are managed through search sessions and are not the primary purpose of the profile form.
@@ -26,4 +23,3 @@ The system SHALL allow users to enter their personal OpenAI API key, which MUST 
 #### Scenario: Key forwarded during match request
 - **WHEN** the user initiates a job scan or matching request
 - **THEN** the client reads the API key from `localStorage` and includes it in the secure request payload to the matching endpoint
-
