@@ -8,6 +8,16 @@ import { createImplicitSession, loadSessions, saveSession } from '@/lib/storage/
 import { loadCheckpoint, saveCheckpoint } from '@/lib/storage/checkpointStorage';
 import { computeProviderFingerprint } from '@/lib/providers/fingerprint';
 
+/**
+ * Builds an actionable message for the case where the provider returned no
+ * listings at all. The baseline-constraint copy would be misleading there,
+ * because nothing was fetched for the pre-filter to reject.
+ */
+function buildEmptyListingMessage(providerName: string, location?: string): string {
+  const locationHint = location ? ` for "${location}"` : '';
+  return `${providerName} returned no postings${locationHint}. Try a broader keyword or a different location.`;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const apiKey =
@@ -122,7 +132,13 @@ export async function POST(request: NextRequest) {
         nextCursor: providerResult.nextCursor,
         totalSeen: seenJobIds.length,
         sessionId: session.id,
-        message: 'No new jobs met your baseline constraints. Try broadening preferences.',
+        notice: providerResult.notice,
+        message:
+          rawListings.length === 0
+            ? buildEmptyListingMessage(provider.name, session.location)
+            : unseenListings.length === 0
+              ? 'No new postings since your last scan. Postings already found for this track are kept below.'
+              : 'No new jobs met your baseline constraints. Try broadening preferences.',
       });
     }
 
@@ -215,6 +231,7 @@ export async function POST(request: NextRequest) {
       nextCursor: providerResult.nextCursor,
       totalSeen: cappedSeen.length,
       sessionId: session.id,
+      notice: providerResult.notice,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'An unexpected error occurred';

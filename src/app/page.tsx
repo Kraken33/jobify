@@ -113,6 +113,8 @@ export default function Home() {
     setErrorMessage(null);
 
     const currentSessionId = activeSessionId || sessions[0]?.id;
+    const currentSession = sessions.find((s) => s.id === currentSessionId);
+    const providerId = currentSession?.provider || 'justjoin';
 
     try {
       const response = await fetch('/api/match', {
@@ -124,7 +126,7 @@ export default function Home() {
         },
         body: JSON.stringify({
           profile,
-          providerId: 'justjoin',
+          providerId,
           sessionId: currentSessionId,
           limit: 20,
         }),
@@ -160,8 +162,13 @@ export default function Home() {
       setActiveTab('matches');
 
       if (returnedMatches.length > 0) {
-        setSuccessMessage(`Successfully evaluated ${returnedMatches.length} positions!`);
-        setTimeout(() => setSuccessMessage(null), 3500);
+        const notice = typeof data.notice === 'string' ? data.notice : null;
+        setSuccessMessage(
+          notice
+            ? `Evaluated ${returnedMatches.length} positions. ${notice}`
+            : `Successfully evaluated ${returnedMatches.length} positions!`
+        );
+        setTimeout(() => setSuccessMessage(null), notice ? 7000 : 3500);
       } else if (data.message) {
         setErrorMessage(data.message);
       }
@@ -175,13 +182,14 @@ export default function Home() {
 
   const handleResetSession = useCallback(async () => {
     const currentSessionId = activeSessionId || sessions[0]?.id;
+    const currentSession = sessions.find((s) => s.id === currentSessionId);
     setMatches([]);
     if (currentSessionId) {
       setCursors((prev) => ({
         ...prev,
         [currentSessionId]: null,
       }));
-      await clearCheckpoint(currentSessionId, 'justjoin');
+      await clearCheckpoint(currentSessionId, currentSession?.provider || 'justjoin');
       await clearSessionMatches(currentSessionId);
       setSuccessMessage('Session reset. Next scan will fetch from the beginning.');
       setTimeout(() => setSuccessMessage(null), 3500);
@@ -197,8 +205,10 @@ export default function Home() {
   const handleDeleteSession = useCallback(async (sessionIdToDelete: string) => {
     if (sessions.length <= 1) return;
 
+    const sessionToDelete = sessions.find((s) => s.id === sessionIdToDelete);
+
     await deleteSession(sessionIdToDelete);
-    await clearCheckpoint(sessionIdToDelete, 'justjoin');
+    await clearCheckpoint(sessionIdToDelete, sessionToDelete?.provider || 'justjoin');
     await clearSessionMatches(sessionIdToDelete);
 
     const remainingSessions = sessions.filter((s) => s.id !== sessionIdToDelete);

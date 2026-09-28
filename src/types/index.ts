@@ -24,7 +24,7 @@ export interface SalaryRange {
 
 export interface JobListing {
   id: string;
-  provider: 'justjoin' | 'linkedin' | 'custom';
+  provider: 'justjoin' | 'arbeitsagentur' | 'linkedin' | 'custom';
   title: string;
   company: string;
   companyLogoUrl?: string;
@@ -47,6 +47,8 @@ export interface ProviderResult {
   listings: JobListing[];
   nextCursor: ProviderCursor | null;
   fallback?: boolean;
+  /** Human-readable diagnostic when the provider had to relax a search filter. */
+  notice?: string;
 }
 
 export interface SearchCriteria {

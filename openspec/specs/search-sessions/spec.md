@@ -6,10 +6,10 @@ Provides named, persistent job-hunt tracks that pair a set of provider-level sea
 ## Requirements
 
 ### Requirement: Search Session Entity
-The system SHALL allow users to create and maintain one or more named search sessions, each holding its own provider search parameters independently of the candidate identity profile.
+The system SHALL allow users to create and maintain one or more named search sessions, each holding its own provider selection (`justjoin` or `arbeitsagentur`) and provider search parameters independently of the candidate identity profile.
 
 #### Scenario: Creating a new search session
-- **WHEN** a user creates a new search session with a name and a set of provider search parameters (skills, seniority, work mode, optional location)
+- **WHEN** a user creates a new search session with a name, designated provider (`justjoin` or `arbeitsagentur`), and a set of provider search parameters (skills, seniority, work mode, optional location)
 - **THEN** the system persists the session with a unique ID and an empty cursor state, ready for its first scan
 
 #### Scenario: Creating a new search session with profile inheritance
@@ -25,8 +25,8 @@ The system SHALL allow users to create and maintain one or more named search ses
 - **THEN** the system removes the session record, its associated scan checkpoint, and its persisted match results, switching the active session to a remaining session
 
 #### Scenario: Multiple concurrent sessions
-- **WHEN** a user has two or more active search sessions with different search parameters (e.g. "Full Stack" with React/Node skills and "JavaScript Engineer" with JavaScript/TypeScript skills)
-- **THEN** each session independently maintains its own pagination cursor and seen-job set, and scans from one session do not affect the cursor or match list of another
+- **WHEN** a user has two or more active search sessions with different search parameters (e.g. "Full Stack" with React/Node skills on JustJoin.it and "German Backend" on Arbeitsagentur)
+- **THEN** each session independently maintains its own pagination cursor and seen-job set, and scans from one session route to its own provider without affecting the cursor or match list of another
 
 ### Requirement: Session Selection in the UI
 The system SHALL provide a UI control for switching between active search sessions on the matches board, displaying each session's name, provider, and last scanned timestamp, and offering direct actions to add a new session or delete the active custom session.

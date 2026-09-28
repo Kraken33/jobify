@@ -17,6 +17,18 @@ const POPULAR_SKILLS = [
   "PostgreSQL", "Docker", "AWS", "GraphQL", "Tailwind CSS", "Java", "Go"
 ];
 
+const PROVIDER_OPTIONS = [
+  { id: "justjoin", label: "JustJoin.it (Tech / Global)" },
+  { id: "arbeitsagentur", label: "Bundesagentur für Arbeit (Germany / DACH)" },
+];
+
+const PROVIDER_HINTS: Record<string, string> = {
+  justjoin:
+    "Live JustJoin.it listings need an Apify token; without one, sample data is used.",
+  arbeitsagentur:
+    "Free official arbeitsagentur.de API — no Apify token required. Best for German-speaking roles.",
+};
+
 export function CreateSessionModal({
   isOpen,
   onClose,
@@ -25,6 +37,7 @@ export function CreateSessionModal({
 }: CreateSessionModalProps) {
   const [inheritFromProfile, setInheritFromProfile] = useState<boolean>(true);
   const [name, setName] = useState<string>("");
+  const [provider, setProvider] = useState<string>("justjoin");
   const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState<string>("");
   const [seniority, setSeniority] = useState<SeniorityLevel>("mid");
@@ -89,7 +102,7 @@ export function CreateSessionModal({
         id,
         profileId: profile.id,
         name: trimmedName,
-        provider: "justjoin",
+        provider,
         skills,
         seniority,
         workMode,
@@ -151,6 +164,26 @@ export function CreateSessionModal({
               />
               <div className="w-9 h-5 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
             </label>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-neutral-400 mb-1.5">
+              Job Provider <span className="text-red-400">*</span>
+            </label>
+            <select
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white focus:outline-none focus:border-indigo-500"
+            >
+              {PROVIDER_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-[11px] text-neutral-500">
+              {PROVIDER_HINTS[provider] || ""}
+            </p>
           </div>
 
           <div>
@@ -275,7 +308,7 @@ export function CreateSessionModal({
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                placeholder="e.g. Warsaw, Remote"
+                placeholder={provider === "arbeitsagentur" ? "e.g. Berlin, München" : "e.g. Warsaw, Remote"}
                 className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white focus:outline-none focus:border-indigo-500 placeholder:text-neutral-600"
               />
             </div>

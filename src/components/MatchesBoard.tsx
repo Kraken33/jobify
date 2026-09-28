@@ -3,7 +3,12 @@
 import React, { useState, useMemo } from 'react';
 import { MatchResult, SearchSession, ProviderCursor } from '@/types';
 import { JobCard } from './JobCard';
-import { Sparkles, ArrowUpDown, Filter, AlertCircle, RotateCcw, Plus, Trash2 } from 'lucide-react';
+import { Sparkles, ArrowUpDown, Filter, AlertCircle, RotateCcw, Plus, Trash2, Landmark } from 'lucide-react';
+
+const PROVIDER_LABELS: Record<string, string> = {
+  justjoin: 'JustJoin.it',
+  arbeitsagentur: 'Bundesagentur für Arbeit',
+};
 
 interface MatchesBoardProps {
   matches: MatchResult[];
@@ -41,6 +46,11 @@ export function MatchesBoard({
   const activeSession = useMemo(() => {
     return sessions.find((s) => s.id === activeSessionId) || sessions[0];
   }, [sessions, activeSessionId]);
+
+  const providerLabel = useMemo(() => {
+    const providerId = activeSession?.provider || 'justjoin';
+    return PROVIDER_LABELS[providerId] || providerId;
+  }, [activeSession]);
 
   const filteredMatches = useMemo(() => {
     return matches
@@ -97,6 +107,14 @@ export function MatchesBoard({
                 </div>
               )}
 
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-neutral-800 border border-neutral-700 text-[11px] font-medium text-neutral-300"
+                title="Job provider queried by this search track"
+              >
+                <Landmark className="w-3 h-3 text-indigo-300" />
+                {providerLabel}
+              </span>
+
               {onCreateSession && (
                 <button
                   type="button"
@@ -128,7 +146,7 @@ export function MatchesBoard({
             <p className="mt-2 text-[11px] text-neutral-400">
               {matches.length > 0
                 ? `Found ${matches.length} active positions scored by OpenAI for this session`
-                : 'Scan JustJoin.it to find and score relevant job opportunities'}
+                : `Scan ${providerLabel} to find and score relevant job opportunities`}
             </p>
           </div>
         </div>
@@ -254,7 +272,7 @@ export function MatchesBoard({
           <Sparkles className="w-10 h-10 text-indigo-400/50 mx-auto mb-3" />
           <h3 className="text-base font-semibold text-white">No job matches yet</h3>
           <p className="text-xs text-neutral-400 max-w-sm mx-auto mt-1 mb-5">
-            Configure your target skills in the Profile tab and click Scan to discover personalized jobs on JustJoin.it.
+            Configure your target skills in the Profile tab and click Scan to discover personalized jobs on {providerLabel}.
           </p>
           <button
             type="button"
