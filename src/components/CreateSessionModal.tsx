@@ -23,6 +23,14 @@ const PROVIDER_OPTIONS = [
   { id: "arbeitnow", label: "Arbeitnow (Europe / English Jobs)" },
 ];
 
+const ARBEITNOW_ENDPOINT_OPTIONS: Array<{ id: string; label: string; emoji: string }> = [
+  { id: "english-speaking-jobs", label: "English only", emoji: "🌍" },
+  { id: "visa-sponsorship-jobs", label: "Visa Sponsorship", emoji: "✈️" },
+  { id: "jobs-with-salary", label: "Salary Disclosed", emoji: "💰" },
+  { id: "4-day-work-week-jobs", label: "4-Day Week", emoji: "📅" },
+  { id: "jobs-with-relocation", label: "Relocation", emoji: "📦" },
+];
+
 const PROVIDER_HINTS: Record<string, string> = {
   justjoin:
     "Live JustJoin.it listings need an Apify token; without one, sample data is used.",
@@ -41,6 +49,7 @@ export function CreateSessionModal({
   const [inheritFromProfile, setInheritFromProfile] = useState<boolean>(true);
   const [name, setName] = useState<string>("");
   const [provider, setProvider] = useState<string>("justjoin");
+  const [arbeitnowEndpoint, setArbeitnowEndpoint] = useState<string | null>(null);
   const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState<string>("");
   const [seniority, setSeniority] = useState<SeniorityLevel>("mid");
@@ -132,6 +141,10 @@ export function CreateSessionModal({
         workMode,
         location: location.trim() || undefined,
         spokenLanguages: spokenLanguages.length > 0 ? spokenLanguages : undefined,
+        providerOptions:
+          provider === "arbeitnow" && arbeitnowEndpoint
+            ? { arbeitnow: { endpoint: arbeitnowEndpoint } }
+            : undefined,
         createdAt: now,
         updatedAt: now,
       };
@@ -210,6 +223,47 @@ export function CreateSessionModal({
               {PROVIDER_HINTS[provider] || ""}
             </p>
           </div>
+
+          {provider === "arbeitnow" && (
+            <div>
+              <label className="block text-xs font-medium text-neutral-400 mb-2">
+                Endpoint Mode
+                <span className="ml-1 text-neutral-500 font-normal">(optional)</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {ARBEITNOW_ENDPOINT_OPTIONS.map((opt) => {
+                  const isActive = arbeitnowEndpoint === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() =>
+                        setArbeitnowEndpoint((prev) => (prev === opt.id ? null : opt.id))
+                      }
+                      className={
+                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-150 " +
+                        (isActive
+                          ? "bg-indigo-600 text-white border-indigo-500 shadow shadow-indigo-600/30"
+                          : "bg-neutral-950 text-neutral-400 border-neutral-800 hover:border-neutral-700 hover:text-neutral-200")
+                      }
+                    >
+                      <span>{opt.emoji}</span>
+                      <span>{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {arbeitnowEndpoint && (
+                <p className="mt-1.5 text-[11px] text-indigo-400">
+                  Jobs will be fetched from the{" "}
+                  <span className="font-semibold">
+                    {ARBEITNOW_ENDPOINT_OPTIONS.find((o) => o.id === arbeitnowEndpoint)?.label}
+                  </span>{" "}
+                  collection on arbeitnow.com
+                </p>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-medium text-neutral-400 mb-1.5">

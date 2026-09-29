@@ -87,6 +87,12 @@ export class ArbeitnowProvider extends BaseJobProvider {
     );
   }
 
+  /** Maps endpoint paths to their implicit Arbeitnow tag (when one exists). */
+  private static readonly ENDPOINT_TAG_MAP: Record<string, string> = {
+    'english-speaking-jobs': 'english speaking',
+    'visa-sponsorship-jobs': 'visa sponsorship',
+  };
+
   public buildSearchUrl(criteria: SearchCriteria, page: number = 1): string {
     const params = new URLSearchParams();
 
@@ -102,27 +108,44 @@ export class ArbeitnowProvider extends BaseJobProvider {
       params.set('search', keywords);
     }
 
-    const tags: string[] = [];
+    const endpointPath = criteria.providerHints?.arbeitnow?.endpoint;
+
+    // Build tags: start from spoken-language criteria, then inject the
+    // endpoint's implicit tag (if any) so path and tag are always paired.
+    const tagsSet = new Set<string>();
+
     if (criteria.spokenLanguages && criteria.spokenLanguages.length > 0) {
       for (const lang of criteria.spokenLanguages) {
         const name = lang.language?.toLowerCase();
         if (name === 'english' || name?.startsWith('en')) {
-          tags.push('english speaking');
+          tagsSet.add('english speaking');
         } else if (name === 'german' || name?.startsWith('de')) {
-          tags.push('german speaking');
+          tagsSet.add('german speaking');
         }
       }
     }
 
-    if (tags.length > 0) {
-      params.set('tags', JSON.stringify(tags));
+    if (endpointPath) {
+      const implicitTag = ArbeitnowProvider.ENDPOINT_TAG_MAP[endpointPath];
+      if (implicitTag) {
+        tagsSet.add(implicitTag);
+      }
+    }
+
+    if (tagsSet.size > 0) {
+      params.set('tags', JSON.stringify(Array.from(tagsSet)));
     }
 
     params.set('sort_by', 'relevance');
     params.set('date_posted', 'all');
     params.set('page', String(page));
 
-    return `https://www.arbeitnow.com/?${params.toString()}`;
+    // Use provider-specific endpoint path when supplied, otherwise generic root
+    const basePath = endpointPath
+      ? `https://www.arbeitnow.com/${endpointPath}`
+      : 'https://www.arbeitnow.com';
+
+    return `${basePath}?${params.toString()}`;
   }
 
   public async fetchWebSearchPage(

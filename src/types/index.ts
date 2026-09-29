@@ -71,6 +71,13 @@ export interface SearchCriteria {
   publishedAtCursor?: string | null;
   seenJobIds?: string[];
   apifyToken?: string | null;
+  /** Provider-specific hints threaded from session.providerOptions. */
+  providerHints?: {
+    arbeitnow?: {
+      /** URL path segment override, e.g. "english-speaking-jobs" */
+      endpoint?: string;
+    };
+  };
 }
 
 export interface SearchSession {
@@ -83,6 +90,8 @@ export interface SearchSession {
   workMode: WorkMode;
   location?: string;
   spokenLanguages?: SpokenLanguage[];
+  /** Provider-specific options chosen at session creation (e.g. Arbeitnow endpoint mode). */
+  providerOptions?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }

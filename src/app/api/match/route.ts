@@ -92,6 +92,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Cast session-level provider options to the typed hints shape for the adapter
+    const arbeitnowOpts = (session.providerOptions as { arbeitnow?: { endpoint?: string } } | undefined)
+      ?.arbeitnow;
+
     const providerResult = await provider.searchJobs({
       skills: session.skills,
       seniority: session.seniority,
@@ -101,6 +105,7 @@ export async function POST(request: NextRequest) {
       publishedAtCursor,
       seenJobIds,
       apifyToken,
+      ...(arbeitnowOpts ? { providerHints: { arbeitnow: arbeitnowOpts } } : {}),
     });
 
     const rawListings = providerResult.listings;

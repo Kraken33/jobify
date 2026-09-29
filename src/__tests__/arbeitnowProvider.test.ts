@@ -241,7 +241,7 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
       spokenLanguages: [{ language: 'English', level: 'B2' }],
     });
 
-    assert.ok(requestedUrl.startsWith('https://www.arbeitnow.com/?search=javascript'));
+    assert.ok(requestedUrl.startsWith('https://www.arbeitnow.com?search=javascript'));
     assert.strictEqual(result.fallback, false);
     assert.strictEqual(result.listings.length, 1);
     assert.strictEqual(result.listings[0].title, 'JavaScript Developer');
@@ -251,7 +251,8 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
     console.warn = () => {};
     mockFetch(async (input) => {
       const url = String(input);
-      if (url.includes('arbeitnow.com/?')) {
+      // Match web-search URLs: root with query params, or a named endpoint path (not the /api/ REST path)
+      if (url.includes('arbeitnow.com?') || (url.includes('arbeitnow.com/') && !url.includes('/api/'))) {
         return new Response('Internal Server Error', { status: 500 });
       }
       return new Response(JSON.stringify({ data: [], meta: { total: 0 } }), {
@@ -264,5 +265,78 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
     assert.strictEqual(result.fallback, false);
     assert.strictEqual(result.listings.length, 0);
   });
-});
 
+  it('uses generic root URL and no implicit tag when no endpoint hint is provided', () => {
+    const url = provider.buildSearchUrl({ keywords: ['javascript'] });
+    assert.ok(url.startsWith('https://www.arbeitnow.com?'), `Expected generic root, got: ${url}`);
+    assert.ok(url.includes('search=javascript'));
+    assert.ok(!url.includes('tags='), `Expected no tags param without endpoint or spoken languages, got: ${url}`);
+  });
+
+  it('injects endpoint path AND its implicit tag for english-speaking-jobs', () => {
+    const url = provider.buildSearchUrl(
+      {
+        keywords: ['javascript'],
+        providerHints: { arbeitnow: { endpoint: 'english-speaking-jobs' } },
+      },
+      1
+    );
+    assert.ok(
+      url.startsWith('https://www.arbeitnow.com/english-speaking-jobs?'),
+      `Expected english-speaking-jobs path, got: ${url}`
+    );
+    assert.ok(url.includes('search=javascript'));
+    assert.ok(url.includes('sort_by=relevance'));
+    // Implicit tag must be present
+    assert.ok(
+      url.includes('english+speaking') || url.includes('english%20speaking'),
+      `Expected "english speaking" tag in URL, got: ${url}`
+    );
+  });
+
+  it('injects endpoint path AND its implicit tag for visa-sponsorship-jobs', () => {
+    const url = provider.buildSearchUrl(
+      {
+        keywords: ['python'],
+        providerHints: { arbeitnow: { endpoint: 'visa-sponsorship-jobs' } },
+      },
+      1
+    );
+    assert.ok(url.startsWith('https://www.arbeitnow.com/visa-sponsorship-jobs?'));
+    assert.ok(
+      url.includes('visa+sponsorship') || url.includes('visa%20sponsorship'),
+      `Expected "visa sponsorship" tag in URL, got: ${url}`
+    );
+  });
+
+  it('changes only the path for path-only endpoints (no spurious tags)', () => {
+    for (const endpoint of ['jobs-with-salary', '4-day-work-week-jobs', 'jobs-with-relocation']) {
+      const url = provider.buildSearchUrl(
+        { keywords: ['react'], providerHints: { arbeitnow: { endpoint } } },
+        1
+      );
+      assert.ok(
+        url.startsWith(`https://www.arbeitnow.com/${endpoint}?`),
+        `Expected ${endpoint} path, got: ${url}`
+      );
+      assert.ok(!url.includes('tags='), `Expected no tags param for ${endpoint}, got: ${url}`);
+    }
+  });
+
+  it('does not duplicate the english-speaking tag when user also added English spoken language', () => {
+    const url = provider.buildSearchUrl({
+      keywords: ['typescript'],
+      spokenLanguages: [{ language: 'English', level: 'B2' }],
+      providerHints: { arbeitnow: { endpoint: 'english-speaking-jobs' } },
+    });
+    // URLSearchParams encodes spaces as '+'; replace before decoding
+    const rawTagParam = url.split('tags=')[1]?.split('&')[0] || '';
+    const tagParam = decodeURIComponent(rawTagParam.replace(/\+/g, ' '));
+    const parsed: string[] = JSON.parse(tagParam);
+    assert.strictEqual(
+      parsed.filter((t) => t === 'english speaking').length,
+      1,
+      `Expected "english speaking" exactly once, got: ${JSON.stringify(parsed)}`
+    );
+  });
+});
