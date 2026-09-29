@@ -132,7 +132,7 @@ export class ArbeitnowProvider extends BaseJobProvider {
       params.set('tags', JSON.stringify(Array.from(tagsSet)));
     }
 
-    params.set('sort_by', 'null');
+    params.set('sort_by', 'newest');
     params.set('date_posted', 'all');
     params.set('page', String(page));
 
@@ -183,15 +183,36 @@ export class ArbeitnowProvider extends BaseJobProvider {
   }
 
   public parseTotalCountFromHtml(html: string): number | null {
-    const totalMatch =
-      html.match(/(\d[\d,]*)\s+(?:Jobs|jobs|Vacancies|vacancies)/i) ||
-      html.match(/Showing\s+\d+[\s\S]*?of\s+(\d[\d,]*)/i) ||
-      html.match(/(\d[\d,]*)\s+results/i);
-
-    if (totalMatch) {
-      const parsed = parseInt(totalMatch[1].replace(/,/g, ''), 10);
-      if (!Number.isNaN(parsed)) return parsed;
+    // 1. Try parsing embedded script data object (let data = {...})
+    const dataMatch = html.match(/(?:let|var|const)\s+data\s*=\s*(\{[\s\S]*?\});/);
+    if (dataMatch) {
+      try {
+        const data = JSON.parse(dataMatch[1]);
+        if (typeof data?.total === 'number') {
+          return data.total;
+        }
+        if (typeof data?.last_page === 'number' && typeof data?.per_page === 'number') {
+          return data.last_page * data.per_page;
+        }
+      } catch {
+        // Fall back if script data JSON parsing fails
+      }
     }
+
+    // 2. Fallback to DOM regex matching (guarded against page-count text like "Showing 1 of 12 pages")
+    const isShowingPages = /Showing\s+(?:page\s+)?\d+\s+of\s+\d+\s+pages/i.test(html);
+    if (!isShowingPages) {
+      const totalMatch =
+        html.match(/(\d[\d,]*)\s+(?:Jobs|jobs|Vacancies|vacancies)/i) ||
+        html.match(/Showing\s+\d+[\s\S]*?of\s+(\d[\d,]*)(?!\s+pages)/i) ||
+        html.match(/(\d[\d,]*)\s+results/i);
+
+      if (totalMatch) {
+        const parsed = parseInt(totalMatch[1].replace(/,/g, ''), 10);
+        if (!Number.isNaN(parsed)) return parsed;
+      }
+    }
+
     return null;
   }
 

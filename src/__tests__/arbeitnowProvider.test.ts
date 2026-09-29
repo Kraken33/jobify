@@ -203,7 +203,7 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
     assert.ok(url.includes('search=JavaScript+Developer') || url.includes('search=JavaScript%20Developer'));
     assert.ok(url.includes('english'));
     assert.ok(url.includes('tags='));
-    assert.ok(url.includes('sort_by=null'));
+    assert.ok(url.includes('sort_by=newest'));
     assert.ok(url.includes('date_posted=all'));
   });
 
@@ -216,7 +216,7 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
     assert.ok(url.includes('search=Frontend+Engineer') || url.includes('search=Frontend%20Engineer'));
     assert.ok(!url.includes('React'));
     assert.ok(!url.includes('TypeScript'));
-    assert.ok(url.includes('sort_by=null'));
+    assert.ok(url.includes('sort_by=newest'));
     assert.ok(url.includes('date_posted=all'));
   });
 
@@ -235,9 +235,50 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
     assert.ok(listings[0].spokenLanguages && listings[0].spokenLanguages.some((l) => l.language === 'English'));
   });
 
-  it('parses total job count from web search HTML', () => {
+  it('parses total job count from web search HTML DOM regex', () => {
     const count = provider.parseTotalCountFromHtml(SAMPLE_HTML_SEARCH);
     assert.strictEqual(count, 212);
+  });
+
+  it('parses total job count from embedded script data JSON', () => {
+    const htmlWithScript = `
+      <html>
+        <body>
+          <div>Showing 1 of 12 pages</div>
+          <script>
+            let data = {"current_page":1,"data":[],"from":1,"last_page":12,"per_page":35,"to":35,"total":415};
+          </script>
+        </body>
+      </html>
+    `;
+    const count = provider.parseTotalCountFromHtml(htmlWithScript);
+    assert.strictEqual(count, 415);
+  });
+
+  it('calculates total job count from last_page and per_page when total is missing', () => {
+    const htmlWithScript = `
+      <html>
+        <body>
+          <script>
+            let data = {"current_page":1,"last_page":10,"per_page":35};
+          </script>
+        </body>
+      </html>
+    `;
+    const count = provider.parseTotalCountFromHtml(htmlWithScript);
+    assert.strictEqual(count, 350);
+  });
+
+  it('does not misidentify "Showing 1 of 12 pages" as a total vacancy count when no script block exists', () => {
+    const htmlWithPageCountOnly = `
+      <html>
+        <body>
+          <div>Showing 1 of 12 pages</div>
+        </body>
+      </html>
+    `;
+    const count = provider.parseTotalCountFromHtml(htmlWithPageCountOnly);
+    assert.strictEqual(count, null);
   });
 
   it('executes web search fetching when search terms or endpoint hints are provided', async () => {
@@ -256,7 +297,7 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
     });
 
     assert.ok(requestedUrl.startsWith('https://www.arbeitnow.com?search=javascript'));
-    assert.ok(requestedUrl.includes('sort_by=null'));
+    assert.ok(requestedUrl.includes('sort_by=newest'));
     assert.ok(requestedUrl.includes('date_posted=all'));
     assert.strictEqual(result.fallback, false);
     assert.strictEqual(result.listings.length, 1);
@@ -278,7 +319,7 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
     });
 
     assert.ok(requestedUrl.startsWith('https://www.arbeitnow.com/english-speaking-jobs?'));
-    assert.ok(requestedUrl.includes('sort_by=null'));
+    assert.ok(requestedUrl.includes('sort_by=newest'));
     assert.ok(requestedUrl.includes('date_posted=all'));
     assert.strictEqual(result.fallback, false);
     assert.strictEqual(result.listings.length, 1);
@@ -323,7 +364,7 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
       `Expected english-speaking-jobs path, got: ${url}`
     );
     assert.ok(url.includes('search=javascript'));
-    assert.ok(url.includes('sort_by=null'));
+    assert.ok(url.includes('sort_by=newest'));
     assert.ok(url.includes('date_posted=all'));
     // Implicit tag must be present
     assert.ok(
