@@ -10,7 +10,7 @@ export class AiMatcherService {
     });
   }
 
-  async evaluateFit(profile: CandidateProfile, job: JobListing): Promise<MatchEvaluation> {
+  public buildPrompt(profile: CandidateProfile, job: JobListing): string {
     const candLangs =
       profile.spokenLanguages && profile.spokenLanguages.length > 0
         ? profile.spokenLanguages.map((l) => `${l.language} (${l.level})`).join(', ')
@@ -21,7 +21,12 @@ export class AiMatcherService {
         ? job.spokenLanguages.map((l) => `${l.language} (${l.level})`).join(', ')
         : 'N/A';
 
-    const prompt = `
+    const languageInstruction =
+      (!job.spokenLanguages || job.spokenLanguages.length === 0) && job.description && job.description.trim().length > 0
+        ? "\nIf the job description explicitly requires a spoken language that the candidate's profile does not include, list it as a critical gap and reduce the score to reflect the mismatch."
+        : '';
+
+    return `
 You are an expert technical recruiter assessing candidate-job fit.
 
 Candidate Profile:
@@ -42,7 +47,7 @@ Job Listing:
 - Spoken Languages Required: ${jobLangs}
 - Description: ${job.description || 'N/A'}
 
-Evaluate how well the candidate profile matches this job posting.
+Evaluate how well the candidate profile matches this job posting.${languageInstruction}
 Provide a realistic match score between 0 and 100, a short verdict ("Strong Match", "Moderate Match", "Low Match", or "Mismatch"), key pros/advantages, critical skill gaps, and a concise 1-2 sentence summary.
 
 Return valid JSON adhering to this exact format:
@@ -54,6 +59,10 @@ Return valid JSON adhering to this exact format:
   "summary": string
 }
 `.trim();
+  }
+
+  async evaluateFit(profile: CandidateProfile, job: JobListing): Promise<MatchEvaluation> {
+    const prompt = this.buildPrompt(profile, job);
 
     try {
       const response = await this.openai.chat.completions.create({

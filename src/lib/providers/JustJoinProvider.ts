@@ -176,7 +176,7 @@ export class JustJoinProvider extends BaseJobProvider {
   }
 
   /** Serializes search criteria into the actor's input schema. */
-  private buildApifyInput(criteria: SearchCriteria): Record<string, unknown> {
+  public buildApifyInput(criteria: SearchCriteria): Record<string, unknown> {
     const requestedLimit = criteria.limit && criteria.limit > 0 ? criteria.limit : 25;
     const input: Record<string, unknown> = {
       maxItems: Math.min(requestedLimit, APIFY_MAX_ITEMS),
@@ -203,6 +203,22 @@ export class JustJoinProvider extends BaseJobProvider {
     const category = criteria.skills?.[0] ? this.mapSkillToCategory(criteria.skills[0]) : null;
     if (category) {
       input.category = category;
+    }
+
+    if (criteria.spokenLanguages && criteria.spokenLanguages.length > 0) {
+      const langCodeMap: Record<string, string> = {
+        English: 'en',
+        Polish: 'pl',
+        German: 'de',
+        Spanish: 'es',
+        French: 'fr',
+      };
+      const codes = criteria.spokenLanguages
+        .map((l) => langCodeMap[l.language])
+        .filter((code): code is string => Boolean(code));
+      if (codes.length > 0) {
+        input.languages = Array.from(new Set(codes));
+      }
     }
 
     return input;
@@ -292,12 +308,8 @@ export class JustJoinProvider extends BaseJobProvider {
     const experience = String(raw.experience || raw.experienceLevel || 'mid').toLowerCase();
     const seniority = this.mapExperienceToSeniority(experience);
 
-    const skillSource =
-      raw.requiredSkills && raw.requiredSkills.length > 0
-        ? raw.requiredSkills
-        : raw.skills && raw.skills.length > 0
-        ? raw.skills
-        : raw.niceToHave || [];
+    const rawRecord = raw as unknown as Record<string, unknown>;
+    const skillSource = this.extractAllRawSkills(rawRecord);
     const skills = this.extractSkillTags(skillSource);
     const descriptionText = raw.description || raw.body || '';
     const spokenLanguages = this.extractSpokenLanguages(skillSource, descriptionText);
@@ -458,6 +470,29 @@ export class JustJoinProvider extends BaseJobProvider {
     return Math.max(1, Math.floor(offset / FALLBACK_PAGE_SIZE) + 1);
   }
 
+  /** Merges all available raw tech stack lists into a single unified array. */
+  private extractAllRawSkills(raw: Record<string, unknown>): unknown[] {
+    const lists = [
+      raw.requiredSkills,
+      raw.required_skills,
+      raw.skills,
+      raw.niceToHave,
+      raw.nice_to_have,
+      raw.techStack,
+      raw.tech_stack,
+      raw.skills_tags,
+      raw.tags,
+    ];
+
+    const merged: unknown[] = [];
+    for (const list of lists) {
+      if (Array.isArray(list)) {
+        merged.push(...list);
+      }
+    }
+    return merged;
+  }
+
   public normalizeOffer(raw: JustJoinRawOffer): JobListing {
     const offerId = String(raw.slug || raw.id || Math.random().toString(36).substring(7));
     const company = raw.companyName || raw.company_name || 'Tech Employer';
@@ -465,9 +500,10 @@ export class JustJoinProvider extends BaseJobProvider {
     const wpType = raw.workplaceType || raw.workplace_type || 'remote';
     const isRemote = wpType === 'remote' || wpType === 'partly_remote';
 
-    // Extract skills
-    const rawSkills = raw.requiredSkills || raw.skills || [];
-    const skills = this.extractSkillTags(rawSkills);
+    // Extract skills from unified tech stack sources
+    const rawRecord = raw as unknown as Record<string, unknown>;
+    const skillSource = this.extractAllRawSkills(rawRecord);
+    const skills = this.extractSkillTags(skillSource);
 
     // Extract seniority
     const exp = (raw.experienceLevel || raw.experience_level || 'mid').toLowerCase();
@@ -496,7 +532,7 @@ export class JustJoinProvider extends BaseJobProvider {
 
     const slug = raw.slug || offerId;
     const url = slug.startsWith('http') ? slug : `https://justjoin.it/offers/${slug}`;
-    const spokenLanguages = this.extractSpokenLanguages(rawSkills, raw.body);
+    const spokenLanguages = this.extractSpokenLanguages(skillSource, raw.body);
 
     return {
       id: `justjoin_${offerId}`,
@@ -533,13 +569,19 @@ export class JustJoinProvider extends BaseJobProvider {
     const langNames: Record<string, string> = {
       english: 'English',
       angielski: 'English',
+      angielskiego: 'English',
+      angielsku: 'English',
       en: 'English',
       polish: 'Polish',
       polski: 'Polish',
+      polskiego: 'Polish',
+      polsku: 'Polish',
       pl: 'Polish',
       german: 'German',
       deutsch: 'German',
       niemiecki: 'German',
+      niemieckiego: 'German',
+      niemiecku: 'German',
       de: 'German',
       spanish: 'Spanish',
       hiszpanski: 'Spanish',
@@ -551,21 +593,50 @@ export class JustJoinProvider extends BaseJobProvider {
       fr: 'French',
     };
 
-    const cefrLevels: SpokenLanguageLevel[] = ['Native', 'C2', 'C1', 'B2', 'B1', 'A2', 'A1'];
+    const levelKeywords: Record<string, SpokenLanguageLevel> = {
+      native: 'Native',
+      ojczysty: 'Native',
+      c2: 'C2',
+      c1: 'C1',
+      fluent: 'C1',
+      biegly: 'C1',
+      biegły: 'C1',
+      biegla: 'C1',
+      biegła: 'C1',
+      b2: 'B2',
+      communicative: 'B2',
+      komunikatywny: 'B2',
+      komunikatywna: 'B2',
+      komunikatywnosc: 'B2',
+      komunikatywność: 'B2',
+      b1: 'B1',
+      a2: 'A2',
+      a1: 'A1',
+    };
 
     const extractFromText = (text: string) => {
       const lower = text.toLowerCase().trim();
       for (const [key, canonicalName] of Object.entries(langNames)) {
-        if (lower.includes(key)) {
+        let isMatch = false;
+        if (key.length <= 2) {
+          const pattern = new RegExp(`\\b${key}\\b`, 'i');
+          isMatch = pattern.test(lower);
+        } else {
+          isMatch = lower.includes(key);
+        }
+
+        if (isMatch) {
           let level: SpokenLanguageLevel = 'B2';
-          for (const lvl of cefrLevels) {
-            const pattern = new RegExp(`\\b${lvl.toLowerCase()}\\b`, 'i');
+          for (const [lvlKey, lvlValue] of Object.entries(levelKeywords)) {
+            const pattern = new RegExp(`\\b${lvlKey}\\b`, 'i');
             if (pattern.test(lower)) {
-              level = lvl;
+              level = lvlValue;
               break;
             }
           }
           if (!foundMap.has(canonicalName)) {
+            foundMap.set(canonicalName, level);
+          } else if (foundMap.get(canonicalName) === 'B2' && level !== 'B2') {
             foundMap.set(canonicalName, level);
           }
         }
@@ -573,11 +644,20 @@ export class JustJoinProvider extends BaseJobProvider {
     };
 
     for (const item of skillSource) {
-      const name = typeof item === 'string' ? item : item?.name;
-      if (name) extractFromText(name);
+      if (typeof item === 'string') {
+        extractFromText(item);
+      } else if (item && typeof item === 'object') {
+        const rec = item as Record<string, unknown>;
+        const parts = [rec.name, rec.title, rec.level, rec.value, rec.description]
+          .filter((v): v is string | number => v !== undefined && v !== null && String(v).trim().length > 0)
+          .map((v) => String(v));
+        if (parts.length > 0) {
+          extractFromText(parts.join(' '));
+        }
+      }
     }
 
-    if (foundMap.size === 0 && description) {
+    if (description) {
       extractFromText(description);
     }
 

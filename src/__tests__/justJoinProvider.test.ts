@@ -128,6 +128,50 @@ describe('JustJoinProvider normalization', () => {
       { language: 'Polish', level: 'C2' },
     ]);
   });
+
+  it('does NOT extract Polish for playwright or typescript skill tags', () => {
+    const langs = provider.extractSpokenLanguages([{ name: 'Playwright' }, { name: 'TypeScript' }]);
+    assert.strictEqual(langs, undefined);
+  });
+
+  it('extracts language requirements from natural-language description phrases', () => {
+    const fluentPolish = provider.extractSpokenLanguages([], 'Fluent Polish required for team communication');
+    assert.deepStrictEqual(fluentPolish, [{ language: 'Polish', level: 'C1' }]);
+
+    const englishB2 = provider.extractSpokenLanguages([], 'Requires English at B2 level');
+    assert.deepStrictEqual(englishB2, [{ language: 'English', level: 'B2' }]);
+
+    const bothLangs = provider.extractSpokenLanguages([], 'komunikatywność po angielsku i wymagany język polski');
+    assert.strictEqual(bothLangs?.length, 2);
+    const names = bothLangs.map((l) => l.language).sort();
+    assert.deepStrictEqual(names, ['English', 'Polish']);
+  });
+
+  it('extracts languages from secondary tech stack arrays and object properties', () => {
+    const rawOfferWithTechStack = {
+      title: 'Senior Frontend Dev',
+      requiredSkills: [{ name: 'React' }, { name: 'TypeScript' }],
+      niceToHave: [{ name: 'Polish', level: 'C1' }],
+      techStack: [{ name: 'German', value: 'fluent' }],
+      body: 'Building client applications.',
+    };
+
+    const normalized = provider.normalizeOffer(rawOfferWithTechStack as any);
+    assert.strictEqual(normalized.spokenLanguages?.length, 2);
+    const langs = normalized.spokenLanguages?.map((l) => `${l.language}:${l.level}`).sort();
+    assert.deepStrictEqual(langs, ['German:C1', 'Polish:C1']);
+  });
+
+  it('serializes spokenLanguages into ISO codes in buildApifyInput', () => {
+    const withLang = provider.buildApifyInput({
+      skills: ['React'],
+      spokenLanguages: [{ language: 'English', level: 'B2' }, { language: 'Polish', level: 'C1' }],
+    });
+    assert.deepStrictEqual(withLang.languages, ['en', 'pl']);
+
+    const withoutLang = provider.buildApifyInput({ skills: ['React'] });
+    assert.strictEqual('languages' in withoutLang, false);
+  });
 });
 
 
