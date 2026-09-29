@@ -90,6 +90,18 @@ export class ArbeitsagenturProvider extends BaseJobProvider {
     }
   }
 
+  override async getJobCount(criteria: SearchCriteria): Promise<number | null> {
+    try {
+      const payload = await this.fetchSearchEnvelope({ ...criteria, limit: 1 }, false);
+      if (typeof payload?.maxErgebnisse === 'number') {
+        return payload.maxErgebnisse;
+      }
+      return ARBEITSAGENTUR_FALLBACK_JOB_POOL.length;
+    } catch {
+      return ARBEITSAGENTUR_FALLBACK_JOB_POOL.length;
+    }
+  }
+
   /**
    * Serializes search criteria into the service's query parameters.
    * `options.ignoreLocation` drops `wo`, which is used to broaden a search whose

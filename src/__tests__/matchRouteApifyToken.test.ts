@@ -95,4 +95,40 @@ describe('/api/match Apify token plumbing', () => {
     assert.strictEqual(response.status, 401);
     assert.strictEqual(capturedCriteria, null);
   });
+
+  it('includes hard-constraint mismatched jobs with a 25% score low match at the bottom', async () => {
+    providerRegistry.register({
+      id: 'justjoin',
+      name: 'Stub JustJoin With Mismatch',
+      searchJobs: async (): Promise<ProviderResult> => {
+        return {
+          listings: [
+            {
+              id: 'job_mismatch_onsite',
+              provider: 'justjoin',
+              title: 'Onsite Developer',
+              company: 'Office Corp',
+              isRemote: false,
+              workplaceType: 'office',
+              seniority: 'senior',
+              requiredSkills: ['React'],
+              url: 'https://example.com/onsite',
+            },
+          ],
+          nextCursor: null,
+          fallback: true,
+        };
+      },
+    });
+
+    const response = await POST(buildRequest({}));
+    const payload = await response.json();
+
+    assert.strictEqual(response.status, 200);
+    assert.strictEqual(payload.matches.length, 1);
+    assert.strictEqual(payload.matches[0].job.id, 'job_mismatch_onsite');
+    assert.strictEqual(payload.matches[0].evaluation.score, 25);
+    assert.strictEqual(payload.matches[0].evaluation.verdict, 'Low Match');
+    assert.ok(payload.matches[0].evaluation.gaps[0].includes('requires remote'));
+  });
 });

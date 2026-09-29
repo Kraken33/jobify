@@ -117,5 +117,6 @@ export interface JobProvider {
   name: string;
   id: string;
   searchJobs(criteria: SearchCriteria): Promise<ProviderResult>;
+  getJobCount?(criteria: SearchCriteria): Promise<number | null>;
 }
 

@@ -95,4 +95,21 @@ describe('Pre-filter matching rules', () => {
     assert.strictEqual(result.passed, false);
     assert.ok(result.reason?.includes('below required level'));
   });
+
+  it('rejects when job requires English B2 + Polish C2 and candidate has English B2 but lacks Polish', () => {
+    const candidateEnglishOnly: CandidateProfile = {
+      ...baseProfile,
+      spokenLanguages: [{ language: 'English', level: 'B2' }],
+    };
+    const multiLangJob: JobListing = {
+      ...remoteJuniorJob,
+      spokenLanguages: [
+        { language: 'English', level: 'B2' },
+        { language: 'Polish', level: 'C2' },
+      ],
+    };
+    const result = evaluateHardConstraints(candidateEnglishOnly, multiLangJob);
+    assert.strictEqual(result.passed, false);
+    assert.ok(result.reason?.includes('missing required spoken language: Polish'));
+  });
 });

@@ -21,7 +21,7 @@ The system SHALL define a standardized provider contract that accepts candidate 
 - **THEN** it fetches the full current pool of listings without a date filter, and the returned `nextCursor` is set to the `published_at` of the newest listing in the result
 
 ### Requirement: JustJoin.it Provider Integration
-The system SHALL implement a provider adapter for JustJoin.it that fetches live job offers. When an Apify API token is available in search criteria or runtime configuration, the adapter SHALL query JustJoin.it offers through the Apify `trev0n/justjoinit-scraper` actor. The adapter SHALL map candidate skills, seniority, work mode, and location to actor input parameters, parse returned dataset items into canonical job listing objects, and preserve cursor pagination. When no Apify token is provided or when scraping requests fail or exceed quotas, the adapter SHALL fall back to a deterministic multi-page fallback generator without crashing.
+The system SHALL implement a provider adapter for JustJoin.it that fetches live job offers. When an Apify API token is available in search criteria or runtime configuration, the adapter SHALL query JustJoin.it offers through the Apify `trev0n/justjoinit-scraper` actor. The adapter SHALL map candidate skills, seniority, work mode, and location to actor input parameters, parse returned dataset items into canonical job listing objects, extract required spoken languages (`spokenLanguages`) with CEFR levels from item fields, skill tags, or offer descriptions, and preserve cursor pagination. When no Apify token is provided or when scraping requests fail or exceed quotas, the adapter SHALL fall back to a deterministic multi-page fallback generator without crashing.
 
 #### Scenario: Fetching listings by technology and level
 - **WHEN** the user initiates an ingestion run targeting specific skills (e.g., "javascript", "react") and seniority (e.g., "mid")
@@ -39,9 +39,13 @@ The system SHALL implement a provider adapter for JustJoin.it that fetches live 
 - **WHEN** the JustJoin.it endpoint returns a non-200 status or times out
 - **THEN** the adapter falls back to the deterministic multi-page generator without crashing the application and includes a `fallback: true` flag in the `ProviderResult`
 
-#### Scenario: Ingesting live offers via Apify actor with client token
+#### Scenario: Ingesting live offers via Apify actor with spoken language extraction
 - **WHEN** search criteria contain an Apify API token and target specific skills (e.g., "javascript", "react") and seniority (e.g., "mid")
-- **THEN** the adapter executes the `trev0n/justjoinit-scraper` actor with corresponding category, keyword, and experience filters, transforms returned dataset items into normalized listings, and returns a `ProviderResult` with `fallback: false`
+- **THEN** the adapter executes the `trev0n/justjoinit-scraper` actor with corresponding category, keyword, and experience filters, transforms returned dataset items into normalized listings with extracted `spokenLanguages`, and returns a `ProviderResult` with `fallback: false`
+
+#### Scenario: Spoken language tags extracted from JustJoin offer data
+- **WHEN** a JustJoin offer specifies language requirements in skills, raw fields, or offer body (e.g., "English B2", "Polish C2")
+- **THEN** the adapter parses these requirements into structured `spokenLanguages` entries on the normalized `JobListing` object
 
 #### Scenario: Date cursor filtering with Apify scraper
 - **WHEN** the adapter runs with an Apify token and a non-null `publishedAtCursor`
@@ -81,3 +85,14 @@ The system SHALL implement a provider adapter for Bundesagentur für Arbeit (arb
 #### Scenario: Graceful fallback when Arbeitsagentur is unreachable
 - **WHEN** the Arbeitsagentur endpoint returns a non-200 status or times out
 - **THEN** the adapter logs a diagnostic warning, returns mock listings from the deterministic multi-page fallback generator seeded by page offset, and sets `fallback: true`
+
+### Requirement: Total Vacancy Count Querying Interface
+The system SHALL extend the job provider interface to support fetching or estimating the total count of active job listings matching search criteria without requiring a full job extraction scan.
+
+#### Scenario: Querying total vacancies from Bundesagentur für Arbeit
+- **WHEN** the count query is executed for provider `arbeitsagentur` with search criteria
+- **THEN** the adapter issues a lightweight query to `https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs` and extracts `maxErgebnisse` from the response envelope to return the total available vacancy count
+
+#### Scenario: Querying total vacancies from JustJoin.it
+- **WHEN** the count query is executed for provider `justjoin` with search criteria
+- **THEN** the adapter returns the total available matching job count (from Apify dataset metadata or fallback pool total size)

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CandidateProfile, MatchResult, JobListing, SearchSession, ScanCheckpoint } from '@/types';
 import { providerRegistry } from '@/lib/providers';
-import { preFilterJobs } from '@/lib/matching/preFilter';
+import { evaluateHardConstraints, preFilterJobs } from '@/lib/matching/preFilter';
 import { AiMatcherService } from '@/lib/matching/aiMatcher';
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { createImplicitSession, loadSessions, saveSession } from '@/lib/storage/sessionStorage';
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const profile: CandidateProfile = body.profile;
     const providerId: string = body.providerId || 'justjoin';
     let sessionId: string | undefined = body.sessionId;
-    const maxScanLimit: number = Math.min(25, body.limit || 20);
+    const maxScanLimit: number = Math.min(100, Math.max(1, body.limit || 20));
 
     if (!profile || !profile.targetRole) {
       return NextResponse.json(
@@ -109,11 +109,8 @@ export async function POST(request: NextRequest) {
     // 4. Deduplicate: skip any listing whose id is already in seenJobIds
     const unseenListings = rawListings.filter((job) => !seenSet.has(job.id));
 
-    // 5. Pre-filter unseen listings against hard constraints
-    const eligibleJobs = preFilterJobs(profile, unseenListings);
-
-    if (eligibleJobs.length === 0) {
-      // Save checkpoint even if no new eligible jobs were scored
+    if (unseenListings.length === 0) {
+      // Save checkpoint when no new unseen jobs were returned
       const updatedCursor = providerResult.nextCursor?.publishedAtCursor ?? publishedAtCursor;
       const updatedCheckpoint: ScanCheckpoint = {
         sessionId: session.id,
@@ -136,10 +133,33 @@ export async function POST(request: NextRequest) {
         message:
           rawListings.length === 0
             ? buildEmptyListingMessage(provider.name, session.location)
-            : unseenListings.length === 0
-              ? 'No new postings since your last scan. Postings already found for this track are kept below.'
-              : 'No new jobs met your baseline constraints. Try broadening preferences.',
+            : 'No new postings since your last scan. Postings already found for this track are kept below.',
       });
+    }
+
+    // 5. Partition unseen listings into eligible vs hard-constraint mismatches
+    const eligibleJobs: JobListing[] = [];
+    const lowMatchResults: MatchResult[] = [];
+
+    for (const job of unseenListings) {
+      const constraintCheck = evaluateHardConstraints(profile, job);
+      if (constraintCheck.passed) {
+        eligibleJobs.push(job);
+      } else {
+        lowMatchResults.push({
+          id: `match_${job.id}_${Date.now()}`,
+          sessionId: session?.id,
+          job,
+          evaluation: {
+            score: 25,
+            verdict: 'Low Match',
+            pros: ['Matched basic provider search criteria'],
+            gaps: [constraintCheck.reason || 'Does not satisfy hard profile constraints'],
+            summary: 'Automated evaluation: soft constraint failure.',
+          },
+          createdAt: new Date().toISOString(),
+        });
+      }
     }
 
     // 6. Score eligible jobs with OpenAI in parallel batches (up to 12 jobs evaluated)
@@ -174,11 +194,14 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    const results = await Promise.all(matchPromises);
+    const aiResults = await Promise.all(matchPromises);
+
+    // Combine AI scored matches and synthetic low match results
+    const results = [...aiResults, ...lowMatchResults];
     results.sort((a, b) => b.evaluation.score - a.evaluation.score);
 
-    // 7. Update checkpoint with newly scored job IDs (capped at 500 most-recent)
-    const newlyScoredIds = jobsToEvaluate.map((j) => j.id);
+    // 7. Update checkpoint with newly processed job IDs (capped at 500 most-recent)
+    const newlyScoredIds = [...jobsToEvaluate.map((j) => j.id), ...lowMatchResults.map((r) => r.job.id)];
     const combinedSeen = Array.from(new Set([...seenJobIds, ...newlyScoredIds]));
     const cappedSeen = combinedSeen.slice(-500);
 

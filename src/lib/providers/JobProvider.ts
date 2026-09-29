@@ -4,6 +4,7 @@ export interface IJobProvider {
   id: string;
   name: string;
   searchJobs(criteria: SearchCriteria): Promise<ProviderResult>;
+  getJobCount?(criteria: SearchCriteria): Promise<number | null>;
 }
 
 export abstract class BaseJobProvider implements IJobProvider {
@@ -11,6 +12,10 @@ export abstract class BaseJobProvider implements IJobProvider {
   abstract name: string;
 
   abstract searchJobs(criteria: SearchCriteria): Promise<ProviderResult>;
+
+  async getJobCount(_criteria: SearchCriteria): Promise<number | null> {
+    return null;
+  }
 
   protected normalizeSkill(skill: string): string {
     return skill.trim().toLowerCase();

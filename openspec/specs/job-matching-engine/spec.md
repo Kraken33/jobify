@@ -6,19 +6,19 @@ Evaluates candidate profiles against fetched job listings using rule-based pre-f
 ## Requirements
 
 ### Requirement: Pre-filtering Against Hard Constraints
-The system SHALL filter out candidate listings that violate non-negotiable user constraints (such as remote work requirement, incompatible seniority bounds, or insufficient spoken language CEFR proficiency) before invoking the LLM. It SHALL additionally skip any listing whose provider job ID is present in the active session's `seenJobIds` set, preventing duplicate AI evaluations and associated token costs.
+The system SHALL evaluate fetched job listings against non-negotiable user constraints (such as remote work requirement, incompatible seniority bounds, insufficient salary threshold, or missing required spoken languages). Rather than discarding or hiding non-matching listings, the system SHALL convert hard constraint failures into low-match evaluations with a fit score of 25%, verdict `Low Match`, and explicit gap explanations. Listings whose provider job ID is present in the active session's `seenJobIds` set SHALL continue to be skipped entirely to prevent duplicate evaluations.
 
-#### Scenario: Listing rejected by hard constraint
+#### Scenario: Listing with hard constraint mismatch included as low match
 - **WHEN** a candidate profile specifies strictly remote work and a fetched listing is strictly on-site in an unrelated city
-- **THEN** the system excludes the listing from LLM scoring to conserve API tokens and processing time
+- **THEN** the system assigns the listing a low-match evaluation (score 25%, verdict `Low Match`, gap describing the work mode mismatch) and includes it in the scan results instead of hiding it
 
-#### Scenario: Listing rejected due to spoken language level gap
-- **WHEN** a job listing requires a spoken language at CEFR level $L_{\text{job}}$ (e.g. German C1) and the candidate profile either lacks that language or specifies a lower CEFR level (e.g. German B1)
-- **THEN** the system excludes the listing from LLM scoring with a clear pre-filtering exclusion reason
+#### Scenario: Listing rejected due to spoken language level gap included as low match
+- **WHEN** a job listing requires spoken languages (e.g. English B2 and Polish C2) and the candidate profile lacks one or more required languages or specifies a lower CEFR level (e.g. candidate has English B2 but no Polish)
+- **THEN** the system evaluates the candidate against all required languages and assigns a low-match evaluation (score 25%, verdict `Low Match`, gap listing missing required language `Polish`) included in the scan results
 
 #### Scenario: Already-seen listing skipped
 - **WHEN** a fetched listing's provider job ID matches an entry in the active session's `seenJobIds` set
-- **THEN** the system skips that listing entirely — it is neither pre-filtered nor sent to the LLM — and the seen-IDs set is not modified for that listing
+- **THEN** the system skips that listing entirely — it is neither evaluated nor included in the results — and the seen-IDs set is not modified for that listing
 
 ### Requirement: OpenAI Structured Fit Evaluation
 The system SHALL submit eligible job descriptions along with the candidate's profile (including target role, seniority, skills, work mode, and spoken languages with CEFR levels) to the OpenAI API using the user's provided API key, receiving a structured evaluation containing an overall fit score (0-100), key matching pros, critical missing skill gaps, and a concise summary.
@@ -32,11 +32,11 @@ The system SHALL submit eligible job descriptions along with the candidate's pro
 - **THEN** the system catches the authentication/quota error and prompts the user to verify their API key in settings
 
 ### Requirement: Ranked Matches Display with External Application Links
-The system SHALL present scored matches in descending order of fit score, highlighting the match percentage, key pros, potential skill gaps, and a direct external link to the job posting.
+The system SHALL present all evaluated job matches in descending order of fit score. Fully eligible jobs scored by the AI matcher SHALL appear at the top, while non-matching listings with low-match evaluations (score 25%) SHALL appear at the very bottom, highlighting match percentage, key pros, constraint gap reasons, and direct external application links.
 
-#### Scenario: Viewing ranked matches
-- **WHEN** an evaluation batch finishes
-- **THEN** the user interface displays the job cards ordered from highest fit score to lowest, each containing a direct link opening the posting on JustJoin.it in a new tab
+#### Scenario: Viewing ranked matches with low-match vacancies at the bottom
+- **WHEN** an evaluation scan finishes containing both eligible and constraint-failing job listings
+- **THEN** the user interface displays all parsed job cards ordered from highest fit score to lowest, with high/medium AI matches displayed first and hard constraint mismatches rendered at the very bottom of the feed
 
 ### Requirement: Session-Scoped Scan Execution
 The system SHALL accept a `sessionId` on the scan endpoint to identify the active search session and an optional client-provided Apify API token via request header or payload. It SHALL load the session's checkpoint (provider fingerprint, `publishedAtCursor`, `seenJobIds`), pass the cursor and Apify token to the provider adapter, and persist the updated checkpoint and seen-ID set after each successful scan.

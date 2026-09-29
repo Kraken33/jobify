@@ -97,7 +97,7 @@ export default function Home() {
     }
   };
 
-  const handleTriggerScan = useCallback(async () => {
+  const handleTriggerScan = useCallback(async (customLimit?: unknown) => {
     const key = getStoredApiKey();
     if (!key) {
       setIsKeyModalOpen(true);
@@ -112,6 +112,7 @@ export default function Home() {
     const currentSessionId = activeSessionId || sessions[0]?.id;
     const currentSession = sessions.find((s) => s.id === currentSessionId);
     const providerId = currentSession?.provider || 'justjoin';
+    const scanLimit = typeof customLimit === 'number' && !Number.isNaN(customLimit) ? customLimit : 20;
 
     try {
       const response = await fetch('/api/match', {
@@ -125,7 +126,7 @@ export default function Home() {
           profile,
           providerId,
           sessionId: currentSessionId,
-          limit: 20,
+          limit: scanLimit,
         }),
       });
 
@@ -336,6 +337,7 @@ export default function Home() {
         {/* Tab Views */}
         {activeTab === 'matches' && (
           <MatchesBoard
+            profile={profile}
             matches={matches}
             isLoading={isLoading}
             onTriggerScan={handleTriggerScan}
@@ -376,7 +378,7 @@ export default function Home() {
         isOpen={isKeyModalOpen}
         onClose={() => setIsKeyModalOpen(false)}
         onKeyUpdated={handleKeyUpdated}
-        onSuccessScanTrigger={handleTriggerScan}
+        onSuccessScanTrigger={() => handleTriggerScan()}
       />
 
       {/* Create Session Modal */}

@@ -483,4 +483,16 @@ describe('ArbeitsagenturProvider search integration', () => {
       assert.strictEqual(firstIds.has(listing.id), false, `Unexpected repeat: ${listing.id}`);
     }
   });
+
+  it('queries total job count using maxErgebnisse', async () => {
+    mockFetch(async () => {
+      return new Response(
+        JSON.stringify({ ergebnisliste: [], maxErgebnisse: 142 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    });
+
+    const count = await provider.getJobCount({ skills: ['React'] });
+    assert.strictEqual(count, 142);
+  });
 });

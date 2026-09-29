@@ -5,6 +5,8 @@ import {
   SalaryRange,
   SearchCriteria,
   SeniorityLevel,
+  SpokenLanguage,
+  SpokenLanguageLevel,
   WorkMode,
 } from '@/types';
 import { FALLBACK_JOB_POOL } from './fallbackPool';
@@ -111,6 +113,19 @@ export class JustJoinProvider extends BaseJobProvider {
         error instanceof Error ? error.message : 'unknown error'
       );
       return this.getSampleFallbackListings(criteria, this.resolveFallbackPage(criteria));
+    }
+  }
+
+  override async getJobCount(criteria: SearchCriteria): Promise<number | null> {
+    const token = criteria.apifyToken?.trim();
+    if (!token) {
+      return FALLBACK_JOB_POOL.length;
+    }
+    try {
+      const result = await this.fetchApifyOffers({ ...criteria, limit: 100 }, token);
+      return result.listings.length;
+    } catch {
+      return FALLBACK_JOB_POOL.length;
     }
   }
 
@@ -284,6 +299,8 @@ export class JustJoinProvider extends BaseJobProvider {
         ? raw.skills
         : raw.niceToHave || [];
     const skills = this.extractSkillTags(skillSource);
+    const descriptionText = raw.description || raw.body || '';
+    const spokenLanguages = this.extractSpokenLanguages(skillSource, descriptionText);
 
     return {
       id: `justjoin_${offerId}`,
@@ -296,13 +313,12 @@ export class JustJoinProvider extends BaseJobProvider {
       workplaceType,
       seniority,
       requiredSkills: skills.length > 0 ? skills : ['TypeScript', 'JavaScript'],
+      spokenLanguages,
       salaryRange: this.parseApifySalary(raw.salary),
       url: url || `https://justjoin.it/offers/${offerId}`,
       publishedAt: this.parseDate(raw.published || raw.publishedAt),
       description:
-        raw.description ||
-        raw.body ||
-        `${title} at ${company}. Requires skills in ${skills.join(', ')}.`,
+        descriptionText || `${title} at ${company}. Requires skills in ${skills.join(', ')}.`,
     };
   }
 
@@ -480,6 +496,7 @@ export class JustJoinProvider extends BaseJobProvider {
 
     const slug = raw.slug || offerId;
     const url = slug.startsWith('http') ? slug : `https://justjoin.it/offers/${slug}`;
+    const spokenLanguages = this.extractSpokenLanguages(rawSkills, raw.body);
 
     return {
       id: `justjoin_${offerId}`,
@@ -492,6 +509,7 @@ export class JustJoinProvider extends BaseJobProvider {
       workplaceType: wpType,
       seniority,
       requiredSkills: skills.length > 0 ? skills : ['TypeScript', 'JavaScript'],
+      spokenLanguages,
       salaryRange:
         salaryMin || salaryMax
           ? {
@@ -504,6 +522,71 @@ export class JustJoinProvider extends BaseJobProvider {
       publishedAt: raw.publishedAt || raw.published_at || new Date().toISOString(),
       description: raw.body || `${title} at ${company}. Requires skills in ${skills.join(', ')}.`,
     };
+  }
+
+  public extractSpokenLanguages(
+    skillSource: (string | { name?: string })[] = [],
+    description?: string
+  ): SpokenLanguage[] | undefined {
+    const foundMap = new Map<string, SpokenLanguageLevel>();
+
+    const langNames: Record<string, string> = {
+      english: 'English',
+      angielski: 'English',
+      en: 'English',
+      polish: 'Polish',
+      polski: 'Polish',
+      pl: 'Polish',
+      german: 'German',
+      deutsch: 'German',
+      niemiecki: 'German',
+      de: 'German',
+      spanish: 'Spanish',
+      hiszpanski: 'Spanish',
+      hiszpański: 'Spanish',
+      es: 'Spanish',
+      french: 'French',
+      francais: 'French',
+      français: 'French',
+      fr: 'French',
+    };
+
+    const cefrLevels: SpokenLanguageLevel[] = ['Native', 'C2', 'C1', 'B2', 'B1', 'A2', 'A1'];
+
+    const extractFromText = (text: string) => {
+      const lower = text.toLowerCase().trim();
+      for (const [key, canonicalName] of Object.entries(langNames)) {
+        if (lower.includes(key)) {
+          let level: SpokenLanguageLevel = 'B2';
+          for (const lvl of cefrLevels) {
+            const pattern = new RegExp(`\\b${lvl.toLowerCase()}\\b`, 'i');
+            if (pattern.test(lower)) {
+              level = lvl;
+              break;
+            }
+          }
+          if (!foundMap.has(canonicalName)) {
+            foundMap.set(canonicalName, level);
+          }
+        }
+      }
+    };
+
+    for (const item of skillSource) {
+      const name = typeof item === 'string' ? item : item?.name;
+      if (name) extractFromText(name);
+    }
+
+    if (foundMap.size === 0 && description) {
+      extractFromText(description);
+    }
+
+    if (foundMap.size === 0) return undefined;
+
+    return Array.from(foundMap.entries()).map(([language, level]) => ({
+      language,
+      level,
+    }));
   }
 
   private mapSkillToCategory(skill: string): string | null {

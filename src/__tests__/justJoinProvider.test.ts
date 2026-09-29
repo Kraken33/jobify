@@ -114,6 +114,20 @@ describe('JustJoinProvider normalization', () => {
     });
     assert.notStrictEqual(fp1, fpDifferentLanguage);
   });
+
+  it('extracts spoken languages from skills and description', () => {
+    const rawOffer = {
+      title: 'Fullstack Dev',
+      requiredSkills: [{ name: 'React' }, { name: 'English C1' }, { name: 'Polish C2' }],
+      body: 'Job description text...',
+    };
+
+    const normalized = provider.normalizeOffer(rawOffer);
+    assert.deepStrictEqual(normalized.spokenLanguages, [
+      { language: 'English', level: 'C1' },
+      { language: 'Polish', level: 'C2' },
+    ]);
+  });
 });
 
 
@@ -378,5 +392,10 @@ describe('JustJoinProvider Apify scraper integration', () => {
     }
   });
 
-
+  it('queries total job count using fallback pool or scraper results', async () => {
+    silenceWarnings();
+    const fallbackCount = await provider.getJobCount({ skills: ['React'] });
+    assert.strictEqual(typeof fallbackCount, 'number');
+    assert.ok((fallbackCount ?? 0) > 0);
+  });
 });
