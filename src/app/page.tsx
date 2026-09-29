@@ -123,6 +123,10 @@ export default function Home() {
     const providerId = currentSession?.provider || 'justjoin';
     const scanLimit = typeof customLimit === 'number' && !Number.isNaN(customLimit) ? customLimit : 20;
 
+    const currentCursor = currentSessionId ? cursors[currentSessionId] : undefined;
+    const publishedAtCursor = currentCursor?.publishedAtCursor || null;
+    const seenJobIds = matches.map((m) => m.job.id).slice(-500);
+
     try {
       const response = await fetch('/api/match', {
         method: 'POST',
@@ -137,6 +141,8 @@ export default function Home() {
           sessionId: currentSessionId,
           session: currentSession,
           limit: scanLimit,
+          seenJobIds,
+          publishedAtCursor,
         }),
       });
 
@@ -147,11 +153,15 @@ export default function Home() {
       }
 
       const returnedMatches: MatchResult[] = data.matches || [];
+      const existingIds = new Set(matches.map((m) => m.job.id));
+      const newUniqueMatches = returnedMatches.filter((m) => !existingIds.has(m.job.id));
+      const newUniqueCount = newUniqueMatches.length;
+
       if (returnedMatches.length > 0) {
         // Append new matches, avoiding duplicates by job id
         setMatches((prev) => {
-          const existingIds = new Set(prev.map((m) => m.job.id));
-          const newUnique = returnedMatches.filter((m) => !existingIds.has(m.job.id));
+          const prevIds = new Set(prev.map((m) => m.job.id));
+          const newUnique = returnedMatches.filter((m) => !prevIds.has(m.job.id));
           if (currentSessionId && newUnique.length > 0) {
             saveSessionMatches(currentSessionId, newUnique);
           }
@@ -168,16 +178,17 @@ export default function Home() {
 
       setActiveTab('matches');
 
-      if (returnedMatches.length > 0) {
+      if (newUniqueCount > 0) {
         const notice = typeof data.notice === 'string' ? data.notice : null;
         setSuccessMessage(
           notice
-            ? `Evaluated ${returnedMatches.length} positions. ${notice}`
-            : `Successfully evaluated ${returnedMatches.length} positions!`
+            ? `Evaluated ${newUniqueCount} new positions. ${notice}`
+            : `Successfully evaluated ${newUniqueCount} new positions!`
         );
         setTimeout(() => setSuccessMessage(null), notice ? 7000 : 3500);
-      } else if (data.message) {
-        setErrorMessage(data.message);
+      } else {
+        const msg = data.message || 'There are no new vacancies added.';
+        setErrorMessage(msg);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error evaluating jobs';
@@ -185,7 +196,7 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
-  }, [profile, activeSessionId, sessions]);
+  }, [profile, activeSessionId, sessions, matches, cursors]);
 
   const handleDismiss = useCallback(
     async (matchId: string) => {

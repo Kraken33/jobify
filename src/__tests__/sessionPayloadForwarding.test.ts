@@ -99,6 +99,30 @@ describe('Session payload forwarding in /api/match and /api/session/count', () =
         arbeitnow: { endpoint: 'english-speaking-jobs' },
       });
     });
+
+    it('passes payload seenJobIds and publishedAtCursor to provider when database checkpoint is absent', async () => {
+      stubArbeitnowProvider();
+
+      const request = new NextRequest('http://localhost:3000/api/match', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-OpenAI-Key': 'sk-test-key',
+        },
+        body: JSON.stringify({
+          profile: PROFILE,
+          session: CUSTOM_SESSION,
+          seenJobIds: ['arbeitnow_job_1', 'arbeitnow_job_2'],
+          publishedAtCursor: 'page:3',
+        }),
+      });
+
+      const response = await matchPost(request);
+      assert.strictEqual(response.status, 200);
+      assert.ok(capturedSearchCriteria);
+      assert.deepStrictEqual(capturedSearchCriteria?.seenJobIds, ['arbeitnow_job_1', 'arbeitnow_job_2']);
+      assert.strictEqual(capturedSearchCriteria?.publishedAtCursor, 'page:3');
+    });
   });
 
   describe('/api/session/count with session payload', () => {

@@ -72,20 +72,29 @@ export async function POST(request: NextRequest) {
       spokenLanguages: session.spokenLanguages || profile.spokenLanguages,
     });
 
-    // 2. Load existing checkpoint
+    // 2. Load existing checkpoint (with client payload fallback)
+    const payloadPublishedAtCursor: string | null =
+      typeof body.publishedAtCursor === 'string' ? body.publishedAtCursor : null;
+    const payloadSeenJobIds: string[] = Array.isArray(body.seenJobIds)
+      ? body.seenJobIds.filter((id): id is string => typeof id === 'string')
+      : [];
+
     let checkpoint: ScanCheckpoint | null = await loadCheckpoint(session.id, providerId);
     let publishedAtCursor: string | null = null;
     let seenJobIds: string[] = [];
 
     if (checkpoint) {
       if (checkpoint.providerFingerprint === currentFingerprint) {
-        publishedAtCursor = checkpoint.publishedAtCursor;
-        seenJobIds = checkpoint.seenJobIds || [];
+        publishedAtCursor = checkpoint.publishedAtCursor || payloadPublishedAtCursor;
+        seenJobIds = Array.from(new Set([...(checkpoint.seenJobIds || []), ...payloadSeenJobIds]));
       } else {
         // Fingerprint changed -> invalidate cursor & seenJobIds for full fetch
         publishedAtCursor = null;
         seenJobIds = [];
       }
+    } else {
+      publishedAtCursor = payloadPublishedAtCursor;
+      seenJobIds = payloadSeenJobIds;
     }
 
     // 3. Fetch listings from provider
