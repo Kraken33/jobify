@@ -440,6 +440,6 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
 
     assert.ok(requestedPages.length >= 2, `Expected at least 2 pages requested, got ${requestedPages.length}`);
     assert.strictEqual(result.listings.length, 2);
-    assert.strictEqual(result.nextCursor?.publishedAtCursor, `page:3`);
+    assert.strictEqual(result.nextCursor?.publishedAtCursor, result.listings[0].publishedAt);
   });
 });

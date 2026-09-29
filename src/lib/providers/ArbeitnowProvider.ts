@@ -285,23 +285,14 @@ export class ArbeitnowProvider extends BaseJobProvider {
   private async fetchLiveJobs(criteria: SearchCriteria): Promise<ProviderResult> {
     if (this.hasSearchTerms(criteria)) {
       try {
-        let startPage = 1;
-        if (criteria.publishedAtCursor?.startsWith('page:')) {
-          const parsedPage = parseInt(criteria.publishedAtCursor.replace('page:', ''), 10);
-          if (!Number.isNaN(parsedPage) && parsedPage >= 1) {
-            startPage = parsedPage;
-          }
-        } else if (criteria.seenJobIds && criteria.seenJobIds.length > 0) {
-          startPage = Math.max(1, Math.floor(criteria.seenJobIds.length / 30) + 1);
-        }
-
         const targetLimit = Math.max(1, Math.min(100, criteria.limit || 20));
         const seenSet = new Set(criteria.seenJobIds || []);
-        const collectedListings: JobListing[] = [];
-        let currentPage = startPage;
-        const maxPagesToFetch = startPage + 3;
+        const rawListings: JobListing[] = [];
+        const seenIds = new Set<string>();
+        let currentPage = 1;
+        const maxPagesToFetch = 3;
 
-        while (collectedListings.length < targetLimit && currentPage <= maxPagesToFetch) {
+        while (rawListings.length < targetLimit && currentPage <= maxPagesToFetch) {
           const html = await this.fetchWebSearchPage(criteria, currentPage);
           const pageListings = this.parseWebSearchHtml(html, criteria);
           if (!pageListings || pageListings.length === 0) {
@@ -309,22 +300,42 @@ export class ArbeitnowProvider extends BaseJobProvider {
           }
 
           for (const listing of pageListings) {
-            if (!seenSet.has(listing.id)) {
-              seenSet.add(listing.id);
-              collectedListings.push(listing);
-              if (collectedListings.length >= targetLimit) {
-                break;
-              }
+            if (!seenIds.has(listing.id)) {
+              seenIds.add(listing.id);
+              rawListings.push(listing);
             }
           }
 
           currentPage++;
         }
 
-        if (collectedListings.length > 0) {
+        if (rawListings.length > 0) {
+          // Sort newest-first based on publishedAt
+          rawListings.sort((a, b) => {
+            const aTime = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+            const bTime = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+            return bTime - aTime;
+          });
+
+          let filtered = rawListings;
+          if (criteria.publishedAtCursor && !criteria.publishedAtCursor.startsWith('page:')) {
+            const cursorTime = new Date(criteria.publishedAtCursor).getTime();
+            if (!Number.isNaN(cursorTime)) {
+              filtered = rawListings.filter((listing) => {
+                if (!listing.publishedAt) return false;
+                return new Date(listing.publishedAt).getTime() > cursorTime;
+              });
+            }
+          }
+
+          // Apply seenJobIds deduplication
+          filtered = filtered.filter((listing) => !seenSet.has(listing.id));
+
+          const newestPublishedAt = filtered[0]?.publishedAt ?? rawListings[0]?.publishedAt ?? null;
+
           return {
-            listings: collectedListings,
-            nextCursor: { publishedAtCursor: `page:${currentPage}` },
+            listings: filtered,
+            nextCursor: newestPublishedAt ? { publishedAtCursor: newestPublishedAt } : null,
             fallback: false,
           };
         }
