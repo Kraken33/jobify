@@ -22,10 +22,12 @@ export function createImplicitSession(profile: CandidateProfile): SearchSession 
     profileId: profile.id,
     name: 'Default Search',
     provider: 'justjoin',
+    targetRole: profile.targetRole,
     skills: profile.skills || [],
     seniority: profile.seniority || 'mid',
     workMode: profile.workMode || 'remote',
     location: profile.preferredLocation,
+    spokenLanguages: profile.spokenLanguages,
     createdAt: profile.createdAt || now,
     updatedAt: profile.updatedAt || now,
   };
@@ -46,10 +48,13 @@ export async function loadSessions(profileId?: string): Promise<SearchSession[]>
           profileId: row.profile_id,
           name: row.name,
           provider: row.provider_id || 'justjoin',
+          targetRole: row.target_role || row.targetRole,
           skills: row.skills || [],
           seniority: row.seniority,
           workMode: row.work_mode,
           location: row.location,
+          spokenLanguages: row.spoken_languages || row.spokenLanguages,
+          providerOptions: row.provider_options || row.providerOptions,
           createdAt: row.created_at,
           updatedAt: row.created_at,
         }));
@@ -108,10 +113,13 @@ export async function saveSession(session: SearchSession): Promise<SearchSession
         profile_id: updatedSession.profileId,
         name: updatedSession.name,
         provider_id: updatedSession.provider,
+        target_role: updatedSession.targetRole,
         skills: updatedSession.skills,
         seniority: updatedSession.seniority,
         work_mode: updatedSession.workMode,
         location: updatedSession.location,
+        spoken_languages: updatedSession.spokenLanguages,
+        provider_options: updatedSession.providerOptions,
       };
 
       if (row.id) {

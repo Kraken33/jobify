@@ -126,6 +126,7 @@ export default function Home() {
           profile,
           providerId,
           sessionId: currentSessionId,
+          session: currentSession,
           limit: scanLimit,
         }),
       });

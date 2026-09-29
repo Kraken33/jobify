@@ -82,9 +82,10 @@ export class ArbeitnowProvider extends BaseJobProvider {
 
   private hasSearchTerms(criteria: SearchCriteria): boolean {
     return Boolean(
-      (criteria.keywords && criteria.keywords.length > 0) ||
-        (criteria.skills && criteria.skills.length > 0) ||
-        (criteria.spokenLanguages && criteria.spokenLanguages.length > 0)
+      (criteria.targetRole && criteria.targetRole.trim().length > 0) ||
+        (criteria.keywords && criteria.keywords.length > 0) ||
+        (criteria.spokenLanguages && criteria.spokenLanguages.length > 0) ||
+        Boolean(criteria.providerHints?.arbeitnow?.endpoint)
     );
   }
 
@@ -97,16 +98,10 @@ export class ArbeitnowProvider extends BaseJobProvider {
   public buildSearchUrl(criteria: SearchCriteria, page: number = 1): string {
     const params = new URLSearchParams();
 
-    const keywords = [
-      ...(criteria.keywords || []),
-      ...(criteria.skills || []),
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .trim();
+    const searchTerm = (criteria.targetRole || criteria.keywords?.join(' ') || '').trim();
 
-    if (keywords) {
-      params.set('search', keywords);
+    if (searchTerm) {
+      params.set('search', searchTerm);
     }
 
     const endpointPath = criteria.providerHints?.arbeitnow?.endpoint;
@@ -137,7 +132,7 @@ export class ArbeitnowProvider extends BaseJobProvider {
       params.set('tags', JSON.stringify(Array.from(tagsSet)));
     }
 
-    params.set('sort_by', 'relevance');
+    params.set('sort_by', 'null');
     params.set('date_posted', 'all');
     params.set('page', String(page));
 
@@ -516,9 +511,17 @@ export class ArbeitnowProvider extends BaseJobProvider {
       return false;
     }
 
+    const searchTerms: string[] = [];
+    if (criteria.targetRole && criteria.targetRole.trim()) {
+      searchTerms.push(criteria.targetRole.trim());
+    }
     if (criteria.keywords && criteria.keywords.length > 0) {
+      searchTerms.push(...criteria.keywords.filter(Boolean));
+    }
+
+    if (searchTerms.length > 0) {
       const haystack = `${listing.title} ${listing.company} ${listing.description || ''} ${listing.requiredSkills.join(' ')}`.toLowerCase();
-      const hasKeywordMatch = criteria.keywords.some((kw) => kw && haystack.includes(kw.toLowerCase().trim()));
+      const hasKeywordMatch = searchTerms.some((kw) => kw && haystack.includes(kw.toLowerCase().trim()));
       if (!hasKeywordMatch) return false;
     }
 
@@ -539,7 +542,7 @@ export class ArbeitnowProvider extends BaseJobProvider {
   }
 
   public getSampleFallbackListings(criteria: SearchCriteria, page: number = 1): ProviderResult {
-    const userRole = criteria.skills?.[0] || 'Software Engineer';
+    const userRole = criteria.targetRole || criteria.keywords?.[0] || criteria.skills?.[0] || 'Software Engineer';
     const now = Date.now();
 
     const pageSize = ARBEITNOW_FALLBACK_PAGE_SIZE;

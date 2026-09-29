@@ -342,6 +342,7 @@ describe('JustJoinProvider Apify scraper integration', () => {
     });
 
     const result = await provider.searchJobs({
+      targetRole: 'Senior React Developer',
       skills: ['React', 'TypeScript'],
       seniority: 'mid',
       workMode: 'remote',
@@ -357,7 +358,7 @@ describe('JustJoinProvider Apify scraper integration', () => {
       sortBy: 'published',
       extractFullDetails: false,
       location: 'krakow',
-      keyword: 'React',
+      keyword: 'Senior React Developer',
       experienceLevel: ['mid'],
       workplaceType: ['remote'],
       category: 'javascript',
@@ -367,6 +368,13 @@ describe('JustJoinProvider Apify scraper integration', () => {
     assert.strictEqual(result.fallback, false);
     assert.strictEqual(result.listings.length, 1);
     assert.strictEqual(result.listings[0].id, 'justjoin_acme-senior-react');
+  });
+
+  it('does not populate keyword from skills alone', () => {
+    const input = provider.buildApifyInput({
+      skills: ['React', 'TypeScript'],
+    });
+    assert.strictEqual('keyword' in input, false);
   });
 
   it('falls back to deterministic listings when no Apify token is configured', async () => {

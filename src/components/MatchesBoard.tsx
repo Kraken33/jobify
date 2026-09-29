@@ -101,6 +101,7 @@ export function MatchesBoard({
           profile,
           providerId: activeSession?.provider || 'justjoin',
           sessionId: activeSession?.id,
+          session: activeSession,
         }),
       });
       if (response.ok) {

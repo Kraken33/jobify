@@ -188,7 +188,7 @@ export class JustJoinProvider extends BaseJobProvider {
       location: this.mapLocationToApify(criteria.location),
     };
 
-    const keyword = criteria.keywords?.[0] || criteria.skills?.[0];
+    const keyword = criteria.targetRole || criteria.keywords?.[0];
     if (keyword) {
       input.keyword = keyword;
     }
@@ -692,7 +692,7 @@ export class JustJoinProvider extends BaseJobProvider {
   }
 
   public getSampleFallbackListings(criteria: SearchCriteria, page: number = 1): ProviderResult {
-    const userRole = criteria.skills?.[0] || 'Full Stack Developer';
+    const userRole = criteria.targetRole || criteria.keywords?.[0] || criteria.skills?.[0] || 'Full Stack Developer';
     const now = Date.now();
 
     const pageSize = FALLBACK_PAGE_SIZE;

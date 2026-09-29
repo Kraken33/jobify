@@ -1,6 +1,7 @@
 import { SpokenLanguage } from '@/types';
 
 export function computeProviderFingerprint(params: {
+  targetRole?: string;
   skills: string[];
   seniority: string;
   workMode: string;
@@ -8,6 +9,7 @@ export function computeProviderFingerprint(params: {
   spokenLanguages?: SpokenLanguage[];
 }): string {
   const normalized = {
+    targetRole: (params.targetRole || '').trim().toLowerCase(),
     location: (params.location || '').trim().toLowerCase(),
     seniority: (params.seniority || '').trim().toLowerCase(),
     skills: [...(params.skills || [])]
@@ -15,9 +17,10 @@ export function computeProviderFingerprint(params: {
       .filter(Boolean)
       .sort(),
     spokenLanguages: [...(params.spokenLanguages || [])]
+      .filter((l) => l && l.language)
       .map((l) => ({
-        language: l.language.trim().toLowerCase(),
-        level: l.level.trim().toUpperCase(),
+        language: (l.language || '').trim().toLowerCase(),
+        level: (l.level || '').trim().toUpperCase(),
       }))
       .sort((a, b) => a.language.localeCompare(b.language)),
     workMode: (params.workMode || '').trim().toLowerCase(),

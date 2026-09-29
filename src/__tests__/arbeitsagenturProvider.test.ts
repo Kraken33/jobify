@@ -168,6 +168,7 @@ describe('ArbeitsagenturProvider search integration', () => {
     });
 
     const result = await provider.searchJobs({
+      targetRole: 'React Developer',
       skills: ['React', 'TypeScript'],
       seniority: 'mid',
       workMode: 'remote',
@@ -177,7 +178,7 @@ describe('ArbeitsagenturProvider search integration', () => {
 
     const url = new URL(capturedUrl);
     assert.strictEqual(`${url.origin}${url.pathname}`, ARBEITSAGENTUR_JOBS_ENDPOINT);
-    assert.strictEqual(url.searchParams.get('was'), 'React');
+    assert.strictEqual(url.searchParams.get('was'), 'React Developer');
     assert.strictEqual(url.searchParams.get('wo'), 'Berlin');
     assert.strictEqual(url.searchParams.get('homeofficemoeglich'), 'true');
     assert.strictEqual(url.searchParams.get('page'), '1');
@@ -198,25 +199,27 @@ describe('ArbeitsagenturProvider search integration', () => {
 
   it('omits location and home office filters that the service cannot resolve', () => {
     const generic = new URL(
-      provider.buildSearchUrl({ skills: ['Java'], location: 'Remote', workMode: 'any' })
+      provider.buildSearchUrl({ targetRole: 'Java Developer', skills: ['Java'], location: 'Remote', workMode: 'any' })
     );
-    assert.strictEqual(generic.searchParams.get('was'), 'Java');
+    assert.strictEqual(generic.searchParams.get('was'), 'Java Developer');
     assert.strictEqual(generic.searchParams.has('wo'), false);
     assert.strictEqual(generic.searchParams.has('homeofficemoeglich'), false);
     assert.strictEqual(generic.searchParams.get('size'), '25');
 
     const multi = new URL(
-      provider.buildSearchUrl({ skills: ['Java'], location: 'Remote / München' })
+      provider.buildSearchUrl({ targetRole: 'Java Engineer', skills: ['Java'], location: 'Remote / München' })
     );
     assert.strictEqual(multi.searchParams.get('wo'), 'München');
+    assert.strictEqual(multi.searchParams.get('was'), 'Java Engineer');
 
     const keywords = new URL(
       provider.buildSearchUrl({ keywords: ['Data Engineer'], skills: ['Python'] })
     );
     assert.strictEqual(keywords.searchParams.get('was'), 'Data Engineer');
 
-    const capped = new URL(provider.buildSearchUrl({ skills: ['Go'], limit: 80 }));
-    assert.strictEqual(capped.searchParams.get('size'), '25');
+    const noRoleSkillsOnly = new URL(provider.buildSearchUrl({ skills: ['Go'], limit: 80 }));
+    assert.strictEqual(noRoleSkillsOnly.searchParams.has('was'), false);
+    assert.strictEqual(noRoleSkillsOnly.searchParams.get('size'), '25');
   });
 
   it('sorts newest-first, deduplicates and filters by the published cursor', () => {
@@ -290,6 +293,7 @@ describe('ArbeitsagenturProvider search integration', () => {
     });
 
     const result = await provider.searchJobs({
+      targetRole: 'React Developer',
       skills: ['React'],
       workMode: 'remote',
       location: 'Warsaw, Poland',
@@ -303,7 +307,7 @@ describe('ArbeitsagenturProvider search integration', () => {
     assert.strictEqual(primary.searchParams.get('wo'), 'Warsaw');
     assert.strictEqual(broadened.searchParams.has('wo'), false);
     // Only the location is dropped; every other criterion survives the retry.
-    assert.strictEqual(broadened.searchParams.get('was'), 'React');
+    assert.strictEqual(broadened.searchParams.get('was'), 'React Developer');
     assert.strictEqual(broadened.searchParams.get('homeofficemoeglich'), 'true');
     assert.strictEqual(broadened.searchParams.get('size'), '20');
 
@@ -357,6 +361,7 @@ describe('ArbeitsagenturProvider search integration', () => {
     });
 
     const result = await provider.searchJobs({
+      targetRole: 'React Developer',
       skills: ['React'],
       workMode: 'remote',
       location: 'Warsaw',
@@ -406,7 +411,7 @@ describe('ArbeitsagenturProvider search integration', () => {
       });
     });
 
-    const result = await provider.searchJobs({ skills: ['Drupal'], location: 'Remote' });
+    const result = await provider.searchJobs({ targetRole: 'Drupal Specialist', location: 'Remote' });
 
     assert.strictEqual(calls, 1);
     assert.strictEqual(result.listings.length, 0);

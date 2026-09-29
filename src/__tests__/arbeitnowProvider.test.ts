@@ -196,19 +196,33 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
 
   it('builds web search URL with serialized search terms and language tags', () => {
     const url = provider.buildSearchUrl({
-      keywords: ['javascript'],
+      targetRole: 'JavaScript Developer',
       spokenLanguages: [{ language: 'English', level: 'B2' }],
     });
 
-    assert.ok(url.includes('search=javascript'));
+    assert.ok(url.includes('search=JavaScript+Developer') || url.includes('search=JavaScript%20Developer'));
     assert.ok(url.includes('english'));
     assert.ok(url.includes('tags='));
-    assert.ok(url.includes('sort_by=relevance'));
+    assert.ok(url.includes('sort_by=null'));
+    assert.ok(url.includes('date_posted=all'));
+  });
+
+  it('uses targetRole without injecting candidate skills into search param', () => {
+    const url = provider.buildSearchUrl({
+      targetRole: 'Frontend Engineer',
+      skills: ['React', 'TypeScript', 'Tailwind', 'Next.js'],
+    });
+
+    assert.ok(url.includes('search=Frontend+Engineer') || url.includes('search=Frontend%20Engineer'));
+    assert.ok(!url.includes('React'));
+    assert.ok(!url.includes('TypeScript'));
+    assert.ok(url.includes('sort_by=null'));
+    assert.ok(url.includes('date_posted=all'));
   });
 
   it('parses job listings from web search HTML', () => {
     const listings = provider.parseWebSearchHtml(SAMPLE_HTML_SEARCH, {
-      keywords: ['JavaScript'],
+      targetRole: 'JavaScript Developer',
     });
 
     assert.strictEqual(listings.length, 1);
@@ -226,7 +240,7 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
     assert.strictEqual(count, 212);
   });
 
-  it('executes web search fetching when search terms are provided in criteria', async () => {
+  it('executes web search fetching when search terms or endpoint hints are provided', async () => {
     let requestedUrl = '';
     mockFetch(async (input) => {
       requestedUrl = String(input);
@@ -237,14 +251,37 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
     });
 
     const result = await provider.searchJobs({
-      keywords: ['javascript'],
+      targetRole: 'javascript',
       spokenLanguages: [{ language: 'English', level: 'B2' }],
     });
 
     assert.ok(requestedUrl.startsWith('https://www.arbeitnow.com?search=javascript'));
+    assert.ok(requestedUrl.includes('sort_by=null'));
+    assert.ok(requestedUrl.includes('date_posted=all'));
     assert.strictEqual(result.fallback, false);
     assert.strictEqual(result.listings.length, 1);
     assert.strictEqual(result.listings[0].title, 'JavaScript Developer');
+  });
+
+  it('executes web search when only endpoint hint is provided (no keywords)', async () => {
+    let requestedUrl = '';
+    mockFetch(async (input) => {
+      requestedUrl = String(input);
+      return new Response(SAMPLE_HTML_SEARCH, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html' },
+      });
+    });
+
+    const result = await provider.searchJobs({
+      providerHints: { arbeitnow: { endpoint: 'english-speaking-jobs' } },
+    });
+
+    assert.ok(requestedUrl.startsWith('https://www.arbeitnow.com/english-speaking-jobs?'));
+    assert.ok(requestedUrl.includes('sort_by=null'));
+    assert.ok(requestedUrl.includes('date_posted=all'));
+    assert.strictEqual(result.fallback, false);
+    assert.strictEqual(result.listings.length, 1);
   });
 
   it('falls back to API or fallback pool when web search fails', async () => {
@@ -267,7 +304,7 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
   });
 
   it('uses generic root URL and no implicit tag when no endpoint hint is provided', () => {
-    const url = provider.buildSearchUrl({ keywords: ['javascript'] });
+    const url = provider.buildSearchUrl({ targetRole: 'javascript' });
     assert.ok(url.startsWith('https://www.arbeitnow.com?'), `Expected generic root, got: ${url}`);
     assert.ok(url.includes('search=javascript'));
     assert.ok(!url.includes('tags='), `Expected no tags param without endpoint or spoken languages, got: ${url}`);
@@ -276,7 +313,7 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
   it('injects endpoint path AND its implicit tag for english-speaking-jobs', () => {
     const url = provider.buildSearchUrl(
       {
-        keywords: ['javascript'],
+        targetRole: 'javascript',
         providerHints: { arbeitnow: { endpoint: 'english-speaking-jobs' } },
       },
       1
@@ -286,7 +323,8 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
       `Expected english-speaking-jobs path, got: ${url}`
     );
     assert.ok(url.includes('search=javascript'));
-    assert.ok(url.includes('sort_by=relevance'));
+    assert.ok(url.includes('sort_by=null'));
+    assert.ok(url.includes('date_posted=all'));
     // Implicit tag must be present
     assert.ok(
       url.includes('english+speaking') || url.includes('english%20speaking'),
@@ -297,7 +335,7 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
   it('injects endpoint path AND its implicit tag for visa-sponsorship-jobs', () => {
     const url = provider.buildSearchUrl(
       {
-        keywords: ['python'],
+        targetRole: 'python',
         providerHints: { arbeitnow: { endpoint: 'visa-sponsorship-jobs' } },
       },
       1
@@ -312,7 +350,7 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
   it('changes only the path for path-only endpoints (no spurious tags)', () => {
     for (const endpoint of ['jobs-with-salary', '4-day-work-week-jobs', 'jobs-with-relocation']) {
       const url = provider.buildSearchUrl(
-        { keywords: ['react'], providerHints: { arbeitnow: { endpoint } } },
+        { targetRole: 'react', providerHints: { arbeitnow: { endpoint } } },
         1
       );
       assert.ok(
@@ -325,7 +363,7 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
 
   it('does not duplicate the english-speaking tag when user also added English spoken language', () => {
     const url = provider.buildSearchUrl({
-      keywords: ['typescript'],
+      targetRole: 'typescript',
       spokenLanguages: [{ language: 'English', level: 'B2' }],
       providerHints: { arbeitnow: { endpoint: 'english-speaking-jobs' } },
     });

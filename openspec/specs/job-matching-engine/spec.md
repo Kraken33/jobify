@@ -49,7 +49,11 @@ The system SHALL present all evaluated job matches in descending order of fit sc
 - **THEN** the user interface displays all parsed job cards ordered from highest fit score to lowest, with high/medium AI matches displayed first and hard constraint mismatches rendered at the very bottom of the feed
 
 ### Requirement: Session-Scoped Scan Execution
-The system SHALL accept a `sessionId` on the scan endpoint to identify the active search session and an optional client-provided Apify API token via request header or payload. It SHALL load the session's checkpoint (provider fingerprint, `publishedAtCursor`, `seenJobIds`), pass the cursor and Apify token to the provider adapter, and persist the updated checkpoint and seen-ID set after each successful scan.
+The system SHALL accept an optional `session` object or `sessionId` on the scan endpoint to identify and configure the active search session, along with an optional client-provided Apify API token via request header or payload. When `session` is provided in the request body, the system SHALL prioritize its parameters (including `targetRole`, `providerOptions`, `skills`, `seniority`, `workMode`, `location`, `spokenLanguages`) over default profile settings and database lookups. It SHALL load the session's checkpoint (provider fingerprint, `publishedAtCursor`, `seenJobIds`), pass the cursor and Apify token to the provider adapter, and persist the updated checkpoint and seen-ID set after each successful scan.
+
+#### Scenario: Scan with client-provided session payload
+- **WHEN** the client triggers a scan and provides the full `session` object in the request body
+- **THEN** the system applies the session's designated `targetRole`, `providerOptions`, `skills`, and filters directly to the provider search criteria without falling back to profile defaults, regardless of whether a database session record exists
 
 #### Scenario: Scan with existing session checkpoint
 - **WHEN** the user triggers a scan for an active session that has a stored `publishedAtCursor`

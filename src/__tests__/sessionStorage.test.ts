@@ -20,6 +20,7 @@ describe('sessionStorage and checkpointStorage', () => {
     assert.strictEqual(s1.id, s2.id);
     assert.strictEqual(s1.name, 'Default Search');
     assert.strictEqual(s1.provider, 'justjoin');
+    assert.strictEqual(s1.targetRole, 'Full Stack Developer');
   });
 
   it('handles checkpoint storage in guest mode (localStorage mock / fallback)', async () => {

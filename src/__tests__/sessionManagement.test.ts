@@ -60,6 +60,7 @@ describe("search sessions and match isolation integration", () => {
   it("creates session with inherited profile parameters", async () => {
     const defaultSession = createImplicitSession(testProfile);
     assert.strictEqual(defaultSession.name, "Default Search");
+    assert.strictEqual(defaultSession.targetRole, "Full Stack Engineer");
     assert.deepStrictEqual(defaultSession.skills, testProfile.skills);
     assert.strictEqual(defaultSession.seniority, testProfile.seniority);
     assert.strictEqual(defaultSession.workMode, testProfile.workMode);
@@ -71,6 +72,7 @@ describe("search sessions and match isolation integration", () => {
       profileId: testProfile.id,
       name: "Full Stack Track",
       provider: "justjoin",
+      targetRole: "Full Stack Developer",
       skills: ["React", "Node.js"],
       seniority: "mid",
       workMode: "remote",
@@ -83,6 +85,7 @@ describe("search sessions and match isolation integration", () => {
       profileId: testProfile.id,
       name: "JavaScript Track",
       provider: "justjoin",
+      targetRole: "JavaScript Specialist",
       skills: ["JavaScript", "React"],
       seniority: "senior",
       workMode: "hybrid",

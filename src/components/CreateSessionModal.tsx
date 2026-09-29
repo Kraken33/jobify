@@ -48,6 +48,7 @@ export function CreateSessionModal({
 }: CreateSessionModalProps) {
   const [inheritFromProfile, setInheritFromProfile] = useState<boolean>(true);
   const [name, setName] = useState<string>("");
+  const [targetRole, setTargetRole] = useState<string>("");
   const [provider, setProvider] = useState<string>("justjoin");
   const [arbeitnowEndpoint, setArbeitnowEndpoint] = useState<string | null>(null);
   const [skills, setSkills] = useState<string[]>([]);
@@ -64,6 +65,7 @@ export function CreateSessionModal({
   useEffect(() => {
     if (inheritFromProfile) {
       setName(profile.targetRole ? profile.targetRole + " Track" : "New Track");
+      setTargetRole(profile.targetRole || "");
       setSkills(profile.skills || []);
       setSeniority(profile.seniority || "mid");
       setWorkMode(profile.workMode || "remote");
@@ -71,6 +73,7 @@ export function CreateSessionModal({
       setSpokenLanguages(profile.spokenLanguages || []);
     } else {
       setName("");
+      setTargetRole("");
       setSkills([]);
       setSeniority("mid");
       setWorkMode("remote");
@@ -136,6 +139,7 @@ export function CreateSessionModal({
         profileId: profile.id,
         name: trimmedName,
         provider,
+        targetRole: targetRole.trim() || undefined,
         skills,
         seniority,
         workMode,
@@ -275,6 +279,20 @@ export function CreateSessionModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Full Stack Track, JavaScript Specialist"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm text-white focus:outline-none focus:border-indigo-500 placeholder:text-neutral-600"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-neutral-400 mb-1.5">
+              Target Role / Job Title
+              <span className="ml-1 text-neutral-500 font-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={targetRole}
+              onChange={(e) => setTargetRole(e.target.value)}
+              placeholder="e.g. Frontend Engineer, Full Stack Developer"
               className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm text-white focus:outline-none focus:border-indigo-500 placeholder:text-neutral-600"
             />
           </div>

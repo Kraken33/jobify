@@ -143,11 +143,13 @@ export class ArbeitsagenturProvider extends BaseJobProvider {
   }
 
   private resolveSearchKeyword(criteria: SearchCriteria): string | undefined {
+    if (criteria.targetRole && criteria.targetRole.trim()) {
+      return criteria.targetRole.trim();
+    }
     const keyword = criteria.keywords?.find((entry) => entry && entry.trim());
     if (keyword) return keyword.trim();
 
-    const skill = criteria.skills?.find((entry) => entry && entry.trim());
-    return skill ? skill.trim() : undefined;
+    return undefined;
   }
 
   /** Picks the first concrete place name from a free-text location preference. */
@@ -486,7 +488,7 @@ export class ArbeitsagenturProvider extends BaseJobProvider {
   }
 
   public getSampleFallbackListings(criteria: SearchCriteria, page: number = 1): ProviderResult {
-    const userRole = criteria.skills?.[0] || 'Software Engineer';
+    const userRole = criteria.targetRole || criteria.keywords?.[0] || criteria.skills?.[0] || 'Software Engineer';
     const now = Date.now();
 
     const pageSize = ARBEITSAGENTUR_FALLBACK_PAGE_SIZE;

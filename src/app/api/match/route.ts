@@ -35,7 +35,6 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const profile: CandidateProfile = body.profile;
-    const providerId: string = body.providerId || 'justjoin';
     let sessionId: string | undefined = body.sessionId;
     const maxScanLimit: number = Math.min(100, Math.max(1, body.limit || 20));
 
@@ -46,9 +45,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. Resolve session
-    let session: SearchSession | undefined;
-    if (sessionId) {
+    // 1. Resolve session: prioritize payload session, then DB lookup, then implicit session
+    let session: SearchSession | undefined = body.session;
+    if (session) {
+      sessionId = session.id;
+    } else if (sessionId) {
       const allSessions = await loadSessions(profile.id);
       session = allSessions.find((s) => s.id === sessionId);
     }
@@ -59,12 +60,16 @@ export async function POST(request: NextRequest) {
       await saveSession(session);
     }
 
+    const providerId: string = body.providerId || session.provider || 'justjoin';
+
     // Compute provider fingerprint for the session parameters
     const currentFingerprint = computeProviderFingerprint({
+      targetRole: session.targetRole || profile.targetRole,
       skills: session.skills,
       seniority: session.seniority,
       workMode: session.workMode,
       location: session.location,
+      spokenLanguages: session.spokenLanguages || profile.spokenLanguages,
     });
 
     // 2. Load existing checkpoint
@@ -97,10 +102,12 @@ export async function POST(request: NextRequest) {
       ?.arbeitnow;
 
     const providerResult = await provider.searchJobs({
+      targetRole: session.targetRole || profile.targetRole,
       skills: session.skills,
       seniority: session.seniority,
       workMode: session.workMode,
       location: session.location,
+      spokenLanguages: session.spokenLanguages || profile.spokenLanguages,
       limit: maxScanLimit,
       publishedAtCursor,
       seenJobIds,

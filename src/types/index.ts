@@ -61,6 +61,7 @@ export interface ProviderResult {
 }
 
 export interface SearchCriteria {
+  targetRole?: string;
   keywords?: string[];
   skills?: string[];
   seniority?: SeniorityLevel;
@@ -85,6 +86,7 @@ export interface SearchSession {
   profileId?: string;
   name: string;
   provider: string;
+  targetRole?: string;
   skills: string[];
   seniority: SeniorityLevel;
   workMode: WorkMode;

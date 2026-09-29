@@ -9,7 +9,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const profile: CandidateProfile = body.profile;
-    const providerId: string = body.providerId || 'justjoin';
     let sessionId: string | undefined = body.sessionId;
 
     if (!profile || !profile.targetRole) {
@@ -19,17 +18,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let session: SearchSession | undefined;
-    if (sessionId) {
+    // Resolve session: prioritize payload session, then DB lookup, then implicit session
+    let session: SearchSession | undefined = body.session;
+    if (session) {
+      sessionId = session.id;
+    } else if (sessionId) {
       const allSessions = await loadSessions(profile.id);
       session = allSessions.find((s) => s.id === sessionId);
     }
 
     if (!session) {
       session = createImplicitSession(profile);
+      sessionId = session.id;
     }
 
-    const provider = providerRegistry.get(providerId || session.provider || 'justjoin');
+    const providerId: string = body.providerId || session.provider || 'justjoin';
+    const provider = providerRegistry.get(providerId);
     if (!provider) {
       return NextResponse.json(
         { error: `Provider '${providerId}' not found.` },
@@ -38,14 +42,19 @@ export async function POST(request: NextRequest) {
     }
 
     let totalVacancies: number | null = null;
+    const arbeitnowOpts = (session.providerOptions as { arbeitnow?: { endpoint?: string } } | undefined)
+      ?.arbeitnow;
 
     if (typeof provider.getJobCount === 'function') {
       totalVacancies = await provider.getJobCount({
+        targetRole: session.targetRole || profile.targetRole,
         skills: session.skills,
         seniority: session.seniority,
         workMode: session.workMode,
         location: session.location,
+        spokenLanguages: session.spokenLanguages || profile.spokenLanguages,
         apifyToken,
+        ...(arbeitnowOpts ? { providerHints: { arbeitnow: arbeitnowOpts } } : {}),
       });
     }
 
