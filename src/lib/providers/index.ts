@@ -1,10 +1,12 @@
 import { IJobProvider } from './JobProvider';
 import { JustJoinProvider } from './JustJoinProvider';
 import { ArbeitsagenturProvider } from './ArbeitsagenturProvider';
+import { ArbeitnowProvider } from './ArbeitnowProvider';
 
 export * from './JobProvider';
 export * from './JustJoinProvider';
 export * from './ArbeitsagenturProvider';
+export * from './ArbeitnowProvider';
 
 class ProviderRegistry {
   private providers: Map<string, IJobProvider> = new Map();
@@ -12,6 +14,7 @@ class ProviderRegistry {
   constructor() {
     this.register(new JustJoinProvider());
     this.register(new ArbeitsagenturProvider());
+    this.register(new ArbeitnowProvider());
   }
 
   register(provider: IJobProvider): void {

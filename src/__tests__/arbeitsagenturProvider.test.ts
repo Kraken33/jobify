@@ -42,7 +42,7 @@ describe('ArbeitsagenturProvider normalization', () => {
         .getAll()
         .map((entry) => entry.id)
         .sort(),
-      ['arbeitsagentur', 'justjoin']
+      ['arbeitnow', 'arbeitsagentur', 'justjoin']
     );
   });
 

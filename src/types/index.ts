@@ -32,7 +32,7 @@ export interface SalaryRange {
 
 export interface JobListing {
   id: string;
-  provider: 'justjoin' | 'arbeitsagentur' | 'linkedin' | 'custom';
+  provider: 'justjoin' | 'arbeitsagentur' | 'arbeitnow' | 'linkedin' | 'custom';
   title: string;
   company: string;
   companyLogoUrl?: string;

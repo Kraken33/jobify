@@ -20,6 +20,7 @@ const POPULAR_SKILLS = [
 const PROVIDER_OPTIONS = [
   { id: "justjoin", label: "JustJoin.it (Tech / Global)" },
   { id: "arbeitsagentur", label: "Bundesagentur für Arbeit (Germany / DACH)" },
+  { id: "arbeitnow", label: "Arbeitnow (Europe / English Jobs)" },
 ];
 
 const PROVIDER_HINTS: Record<string, string> = {
@@ -27,6 +28,8 @@ const PROVIDER_HINTS: Record<string, string> = {
     "Live JustJoin.it listings need an Apify token; without one, sample data is used.",
   arbeitsagentur:
     "Free official arbeitsagentur.de API — no Apify token required. Best for German-speaking roles.",
+  arbeitnow:
+    "Free public Arbeitnow REST API — no token required. Best for English-speaking & remote roles in Europe.",
 };
 
 export function CreateSessionModal({

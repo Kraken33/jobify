@@ -21,6 +21,7 @@ import {
 const PROVIDER_LABELS: Record<string, string> = {
   justjoin: 'JustJoin.it',
   arbeitsagentur: 'Bundesagentur für Arbeit',
+  arbeitnow: 'Arbeitnow',
 };
 
 interface MatchesBoardProps {
