@@ -10,6 +10,7 @@ import {
   WorkMode,
 } from '@/types';
 import { FALLBACK_JOB_POOL } from './fallbackPool';
+import { loggedFetch } from '../logger';
 
 /** Synchronous Apify actor endpoint: run the actor and return dataset items in one call. */
 export const APIFY_ACTOR_ENDPOINT =
@@ -141,8 +142,9 @@ export class JustJoinProvider extends BaseJobProvider {
 
     let payload: unknown;
     try {
-      const response = await fetch(endpoint, {
+      const response = await loggedFetch(endpoint, {
         method: 'POST',
+        providerId: 'justjoin',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
@@ -471,7 +473,7 @@ export class JustJoinProvider extends BaseJobProvider {
   }
 
   /** Merges all available raw tech stack lists into a single unified array. */
-  private extractAllRawSkills(raw: Record<string, unknown>): unknown[] {
+  private extractAllRawSkills(raw: Record<string, unknown>): (string | { name?: string })[] {
     const lists = [
       raw.requiredSkills,
       raw.required_skills,
@@ -484,10 +486,10 @@ export class JustJoinProvider extends BaseJobProvider {
       raw.tags,
     ];
 
-    const merged: unknown[] = [];
+    const merged: (string | { name?: string })[] = [];
     for (const list of lists) {
       if (Array.isArray(list)) {
-        merged.push(...list);
+        merged.push(...(list as (string | { name?: string })[]));
       }
     }
     return merged;

@@ -10,6 +10,7 @@ import {
   ARBEITSAGENTUR_FALLBACK_JOB_POOL,
   ARBEITSAGENTUR_FALLBACK_PAGE_SIZE,
 } from './arbeitsagenturFallbackPool';
+import { loggedFetch } from '../logger';
 
 /** Public job search service of the Bundesagentur für Arbeit (arbeitsagentur.de). */
 export const ARBEITSAGENTUR_JOBS_ENDPOINT =
@@ -242,8 +243,9 @@ export class ArbeitsagenturProvider extends BaseJobProvider {
 
     let payload: unknown;
     try {
-      const response = await fetch(endpoint, {
+      const response = await loggedFetch(endpoint, {
         method: 'GET',
+        providerId: 'arbeitsagentur',
         headers: {
           // Public client key: no user registration or token required.
           'X-API-Key': ARBEITSAGENTUR_API_KEY,

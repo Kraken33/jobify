@@ -11,6 +11,7 @@ describe('AiMatcherService prompt generation', () => {
     seniority: 'mid',
     skills: ['React', 'TypeScript'],
     workMode: 'remote',
+    experienceSummary: 'Experienced React engineer',
     spokenLanguages: [{ language: 'English', level: 'C1' }],
   };
 
@@ -19,6 +20,7 @@ describe('AiMatcherService prompt generation', () => {
     provider: 'justjoin',
     title: 'Senior React Developer',
     company: 'Tech Corp',
+    seniority: 'senior',
     isRemote: true,
     requiredSkills: ['React', 'TypeScript'],
     url: 'https://example.com/job/1',

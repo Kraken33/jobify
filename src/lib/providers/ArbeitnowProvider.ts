@@ -11,6 +11,7 @@ import {
   ARBEITNOW_FALLBACK_JOB_POOL,
   ARBEITNOW_FALLBACK_PAGE_SIZE,
 } from './arbeitnowFallbackPool';
+import { loggedFetch } from '../logger';
 
 export const ARBEITNOW_API_ENDPOINT = 'https://www.arbeitnow.com/api/job-board-api';
 const ARBEITNOW_REQUEST_TIMEOUT_MS = 15_000;
@@ -157,8 +158,9 @@ export class ArbeitnowProvider extends BaseJobProvider {
     const timeoutId = setTimeout(() => controller.abort(), ARBEITNOW_REQUEST_TIMEOUT_MS);
 
     try {
-      const response = await fetch(url, {
+      const response = await loggedFetch(url, {
         method: 'GET',
+        providerId: 'arbeitnow',
         headers: {
           Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'User-Agent':
@@ -307,8 +309,9 @@ export class ArbeitnowProvider extends BaseJobProvider {
     const timeoutId = setTimeout(() => controller.abort(), ARBEITNOW_REQUEST_TIMEOUT_MS);
 
     try {
-      const response = await fetch(endpoint, {
+      const response = await loggedFetch(endpoint, {
         method: 'GET',
+        providerId: 'arbeitnow',
         headers: {
           Accept: 'application/json',
         },
