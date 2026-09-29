@@ -1,9 +1,6 @@
-# Search Sessions Specification
+# Spec Delta
 
-## Purpose
-Provides named, persistent job-hunt tracks that pair a set of provider-level search parameters (skills, seniority, work mode, location) with a pagination cursor and a seen-job deduplication set, enabling users to run multiple independent, stateful job searches simultaneously without mixing their result pools or replay positions.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Search Session Entity
 The system SHALL allow users to create and maintain one or more named search sessions, each holding its own provider selection (`justjoin`, `arbeitsagentur`, or `arbeitnow`), target role (`targetRole`), provider search parameters (skills, seniority, work mode, location, spoken languages with target CEFR levels), and provider-specific options (`providerOptions` such as Arbeitnow endpoint mode) independently of the candidate identity profile. The system SHALL persist all search sessions in the Supabase `search_sessions` table with full schema support for `target_role`, `spoken_languages`, and `provider_options`. When initiating scans or vacancy counts, the client SHALL forward the complete active session object to server endpoints.
@@ -28,19 +25,8 @@ The system SHALL allow users to create and maintain one or more named search ses
 - **WHEN** a user has two or more active search sessions with different search parameters (e.g. "Full Stack" with React/Node skills on JustJoin.it and "German Backend" with German B2 requirement on Arbeitsagentur)
 - **THEN** each session independently maintains its own pagination cursor and seen-job set in Supabase, and scans from one session route to its own provider without affecting the cursor or match list of another
 
-### Requirement: Session Selection in the UI
-The system SHALL provide a UI control for switching between active search sessions on the matches board, displaying each session's name, provider, and last scanned timestamp, and offering direct actions to add a new session or delete the active custom session.
-
-#### Scenario: Switching between sessions
-- **WHEN** the user selects a different session from the session switcher
-- **THEN** the matches board displays only the matches associated with the selected session and the scan controls reflect that session's cursor state
-
-#### Scenario: Triggering session creation modal
-- **WHEN** the user clicks the "+ New Track" button in the matches board
-- **THEN** the session creation dialog opens with options to inherit profile parameters or fill from scratch
-
 ### Requirement: Session-Scoped Matches
-The system SHALL associate each job match result with the search session that produced it in the Supabase `job_matches` table, so that matches from different sessions are stored, queried, and displayed independently across context switches. The system SHALL enforce uniqueness per session and provider job ID, and SHALL deduplicate records when loading session matches so that identical listings are never displayed multiple times.
+The system SHALL associate each job match result with the search session that produced it in the Supabase `job_matches` table, so that matches from different sessions are stored, queried, and displayed independently across context switches.
 
 #### Scenario: Matches isolated per session
 - **WHEN** a scan completes for session A
@@ -50,28 +36,9 @@ The system SHALL associate each job match result with the search session that pr
 - **WHEN** the user switches from session A to session B and then back to session A
 - **THEN** the matches board restores the exact matches and evaluation results previously scored for session A from Supabase without requiring a re-scan
 
-#### Scenario: Deduplicated match loading across page reloads
-- **WHEN** a user reloads the application for an active search session
-- **THEN** the system loads matches for that session deduplicated by `provider_job_id` and does not display inflated or duplicated match counts
-
 ### Requirement: Profile as Default Session Template
 The system SHALL use the candidate profile's skills, seniority, work mode, and spoken language fields as default values when bootstrapping a new search session in Supabase, while the session's own parameters are the authoritative source for all provider queries once the session is created.
 
 #### Scenario: Bootstrapping a first session from profile defaults
 - **WHEN** no sessions exist for the current profile in Supabase and the user loads the app or triggers a scan
 - **THEN** the system automatically creates an implicit session using the profile's current skills, seniority, work mode, and spoken languages, persists it in Supabase, and associates subsequent matches with that session
-
-### Requirement: Total Vacancies and Prefetch Batch Sizing Control
-The system SHALL surface the total number of matching vacancies available for the current search session, forwarding the active search session payload with its target role and provider options to the vacancy count endpoint, and allow the user to select or configure a custom batch size for scan execution directly next to the session reset controls.
-
-#### Scenario: Total vacancy count displayed in session controls
-- **WHEN** a user views an active search session on the matches board
-- **THEN** the client sends the active session object to the count endpoint, and the session header displays a dropdown button showing the total matching vacancy count for that session's criteria and the current prefetch batch size
-
-#### Scenario: Selecting a preset prefetch batch size
-- **WHEN** a user opens the total vacancies dropdown and selects a preset batch amount (e.g., 5, 10, 20, 50)
-- **THEN** the prefetch batch size for the session is updated, and the primary scan trigger button text updates to reflect the chosen batch count (e.g., "Scan Batch (20)")
-
-#### Scenario: Setting a custom prefetch batch size
-- **WHEN** a user selects "Set Custom Batch Amount..." as the last item in the total vacancies dropdown
-- **THEN** the system prompts the user for a custom numeric batch limit, updates the active session batch size, and uses that limit for subsequent batch scan requests

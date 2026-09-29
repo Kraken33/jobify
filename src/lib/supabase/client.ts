@@ -12,11 +12,16 @@ export const isSupabaseConfigured = Boolean(
 let clientInstance: SupabaseClient | null = null;
 
 export function getSupabaseClient(): SupabaseClient | null {
+  if (clientInstance) {
+    return clientInstance;
+  }
   if (!isSupabaseConfigured) {
     return null;
   }
-  if (!clientInstance) {
-    clientInstance = createClient(supabaseUrl, supabaseAnonKey);
-  }
+  clientInstance = createClient(supabaseUrl, supabaseAnonKey);
   return clientInstance;
+}
+
+export function setSupabaseClient(client: SupabaseClient | null): void {
+  clientInstance = client;
 }

@@ -174,8 +174,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 6. Score eligible jobs with OpenAI in parallel batches (up to 12 jobs evaluated)
-    const jobsToEvaluate = eligibleJobs.slice(0, 12);
+    // 6. Score eligible jobs with OpenAI in parallel batches (evaluating full requested batch)
+    const jobsToEvaluate = eligibleJobs;
     const matcher = new AiMatcherService(apiKey);
 
     const matchPromises = jobsToEvaluate.map(async (job: JobListing): Promise<MatchResult> => {
@@ -228,13 +228,14 @@ export async function POST(request: NextRequest) {
     };
     await saveCheckpoint(newCheckpoint);
 
-    // 8. Optionally save matches to Supabase if configured and profile has an ID
+    // 8. Optionally save matches to Supabase idempotently if configured and profile has an ID
     const supabase = getSupabaseClient();
     if (supabase && isSupabaseConfigured && profile.id) {
       try {
+        const isImplicit = session?.id.startsWith('jobify:implicit:');
         const rows = results.map((m) => ({
           profile_id: profile.id,
-          session_id: session?.id.startsWith('jobify:implicit:') ? null : session?.id,
+          session_id: isImplicit ? null : session?.id,
           provider: m.job.provider,
           provider_job_id: m.job.id,
           title: m.job.title,
@@ -252,8 +253,28 @@ export async function POST(request: NextRequest) {
           pros: m.evaluation.pros,
           gaps: m.evaluation.gaps,
           summary: m.evaluation.summary,
+          status: 'active',
         }));
-        await supabase.from('job_matches').insert(rows);
+
+        if (isImplicit) {
+          for (const row of rows) {
+            const { error: upsertErr } = await supabase
+              .from('job_matches')
+              .upsert(row, { onConflict: 'provider_job_id' });
+            if (upsertErr) {
+              await supabase.from('job_matches').insert([row]);
+            }
+          }
+        } else {
+          const { error: upsertErr } = await supabase
+            .from('job_matches')
+            .upsert(rows, { onConflict: 'session_id,provider_job_id', ignoreDuplicates: true });
+          if (upsertErr) {
+            for (const row of rows) {
+              await supabase.from('job_matches').insert([row]);
+            }
+          }
+        }
       } catch (dbErr) {
         console.warn('Could not persist match cache to Supabase:', dbErr);
       }

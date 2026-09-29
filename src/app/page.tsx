@@ -15,7 +15,15 @@ import {
 } from '@/lib/storage/profileStorage';
 import { loadSessions, createImplicitSession, saveSession, deleteSession } from '@/lib/storage/sessionStorage';
 import { clearCheckpoint } from '@/lib/storage/checkpointStorage';
-import { loadSessionMatches, saveSessionMatches, clearSessionMatches, loadAppliedMatches, saveAppliedMatch } from '@/lib/storage/matchStorage';
+import {
+  loadSessionMatches,
+  saveSessionMatches,
+  clearSessionMatches,
+  loadAppliedMatches,
+  saveAppliedMatch,
+  removeAppliedMatch,
+  updateMatchStatus,
+} from '@/lib/storage/matchStorage';
 import { getStoredApiKey, getStoredApifyToken } from '@/lib/storage/apiKeyStorage';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 
@@ -37,7 +45,7 @@ export default function Home() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Initialize profile, sessions & key from local/Supabase storage after client mount
+  // Initialize profile, sessions & key from Supabase storage after client mount
   useEffect(() => {
     setMounted(true);
     const init = async () => {
@@ -48,8 +56,9 @@ export default function Home() {
         setApiKey(key);
         setApifyToken(getStoredApifyToken());
 
-        // Load global applied list
-        setAppliedMatches(loadAppliedMatches());
+        // Load global applied list from Supabase
+        const initialApplied = await loadAppliedMatches();
+        setAppliedMatches(initialApplied);
 
         const loadedSessions = await loadSessions(loadedProfile.id);
         if (loadedSessions.length > 0) {
@@ -60,14 +69,14 @@ export default function Home() {
           setMatches(initialMatches);
         } else {
           const implicit = createImplicitSession(loadedProfile);
-          setSessions([implicit]);
-          setActiveSessionId(implicit.id);
-          await saveSession(implicit);
-          const initialMatches = await loadSessionMatches(implicit.id);
+          const savedImplicit = await saveSession(implicit);
+          setSessions([savedImplicit]);
+          setActiveSessionId(savedImplicit.id);
+          const initialMatches = await loadSessionMatches(savedImplicit.id);
           setMatches(initialMatches);
         }
       } catch (err) {
-        console.error('Failed to initialize local data:', err);
+        console.error('Failed to initialize storage data:', err);
       }
     };
     init();
@@ -143,11 +152,10 @@ export default function Home() {
         setMatches((prev) => {
           const existingIds = new Set(prev.map((m) => m.job.id));
           const newUnique = returnedMatches.filter((m) => !existingIds.has(m.job.id));
-          const updated = [...prev, ...newUnique];
-          if (currentSessionId) {
-            saveSessionMatches(currentSessionId, updated);
+          if (currentSessionId && newUnique.length > 0) {
+            saveSessionMatches(currentSessionId, newUnique);
           }
-          return updated;
+          return [...prev, ...newUnique];
         });
       }
 
@@ -180,52 +188,37 @@ export default function Home() {
   }, [profile, activeSessionId, sessions]);
 
   const handleDismiss = useCallback(
-    (matchId: string) => {
-      const currentSessionId = activeSessionId || sessions[0]?.id;
-      setMatches((prev) => {
-        const updated = prev.map((m) => (m.id === matchId ? { ...m, status: 'dismissed' as const } : m));
-        if (currentSessionId) {
-          saveSessionMatches(currentSessionId, updated);
-        }
-        return updated;
-      });
+    async (matchId: string) => {
+      setMatches((prev) => prev.filter((m) => m.id !== matchId && m.job.id !== matchId));
+      await updateMatchStatus(matchId, 'dismissed');
     },
-    [activeSessionId, sessions],
+    [],
   );
 
   const handleApply = useCallback(
-    (match: MatchResult) => {
-      const currentSessionId = activeSessionId || sessions[0]?.id;
-      // Update status in session matches
-      setMatches((prev) => {
-        const updated = prev.map((m) => (m.id === match.id ? { ...m, status: 'applied' as const } : m));
-        if (currentSessionId) {
-          saveSessionMatches(currentSessionId, updated);
-        }
-        return updated;
-      });
-      // Add to global applied list
+    async (match: MatchResult) => {
       const appliedMatch = { ...match, status: 'applied' as const };
-      saveAppliedMatch(appliedMatch);
+      // Remove from active matches
+      setMatches((prev) => prev.filter((m) => m.id !== match.id && m.job.id !== match.job.id));
+      // Add to global applied list
       setAppliedMatches((prev) => {
         const deduplicated = prev.filter((m) => m.job.id !== match.job.id);
         return [appliedMatch, ...deduplicated];
       });
+      await saveAppliedMatch(appliedMatch);
     },
-    [activeSessionId, sessions],
+    [],
   );
 
   const handleRemoveFromApplied = useCallback(
-    (matchId: string) => {
+    async (matchId: string) => {
       const currentSessionId = activeSessionId || sessions[0]?.id;
       setAppliedMatches((prev) => prev.filter((m) => m.id !== matchId && m.job.id !== matchId));
-      setMatches((prev) => {
-        const updated = prev.map((m) => (m.id === matchId ? { ...m, status: 'active' as const } : m));
-        if (currentSessionId) {
-          saveSessionMatches(currentSessionId, updated);
-        }
-        return updated;
-      });
+      await removeAppliedMatch(matchId);
+      if (currentSessionId) {
+        const refreshedMatches = await loadSessionMatches(currentSessionId);
+        setMatches(refreshedMatches);
+      }
     },
     [activeSessionId, sessions],
   );

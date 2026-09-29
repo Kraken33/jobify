@@ -1,8 +1,6 @@
 import { CandidateProfile } from '@/types';
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
-const PROFILE_STORAGE_KEY = 'jobify_candidate_profile';
-
 export const DEFAULT_PROFILE: CandidateProfile = {
   targetRole: 'Full Stack Developer',
   seniority: 'mid',
@@ -15,11 +13,8 @@ export const DEFAULT_PROFILE: CandidateProfile = {
 };
 
 export async function loadCandidateProfile(): Promise<CandidateProfile> {
-  if (typeof window === 'undefined') return DEFAULT_PROFILE;
-
-  // Try Supabase first if available
   const supabase = getSupabaseClient();
-  if (supabase && isSupabaseConfigured) {
+  if (supabase) {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -43,19 +38,43 @@ export async function loadCandidateProfile(): Promise<CandidateProfile> {
           updatedAt: data.updated_at,
         };
       }
-    } catch {
-      // Fallback to localStorage
-    }
-  }
 
-  // Local storage fallback
-  try {
-    const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
-    if (raw) {
-      return JSON.parse(raw);
+      // If no profile exists yet in Supabase, create and persist default profile
+      const defaultRecord = {
+        target_role: DEFAULT_PROFILE.targetRole,
+        seniority: DEFAULT_PROFILE.seniority,
+        skills: DEFAULT_PROFILE.skills,
+        work_mode: DEFAULT_PROFILE.workMode,
+        preferred_location: DEFAULT_PROFILE.preferredLocation,
+        min_salary: DEFAULT_PROFILE.minSalary,
+        salary_currency: DEFAULT_PROFILE.salaryCurrency,
+        experience_summary: DEFAULT_PROFILE.experienceSummary,
+      };
+
+      const { data: createdData, error: createError } = await supabase
+        .from('profiles')
+        .insert([defaultRecord])
+        .select('*')
+        .single();
+
+      if (createdData && !createError) {
+        return {
+          id: createdData.id,
+          targetRole: createdData.target_role,
+          seniority: createdData.seniority,
+          skills: createdData.skills || [],
+          workMode: createdData.work_mode,
+          preferredLocation: createdData.preferred_location,
+          minSalary: createdData.min_salary,
+          salaryCurrency: createdData.salary_currency || 'PLN',
+          experienceSummary: createdData.experience_summary || '',
+          createdAt: createdData.created_at,
+          updatedAt: createdData.updated_at,
+        };
+      }
+    } catch (err) {
+      console.warn('Failed to load candidate profile from Supabase:', err);
     }
-  } catch {
-    // Ignore JSON parse errors
   }
 
   return DEFAULT_PROFILE;
@@ -68,14 +87,8 @@ export async function saveCandidateProfile(profile: CandidateProfile): Promise<C
     updatedAt: now,
   };
 
-  // Always save to localStorage for immediate client-side offline access
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(updatedProfile));
-  }
-
-  // Also persist to Supabase if configured
   const supabase = getSupabaseClient();
-  if (supabase && isSupabaseConfigured) {
+  if (supabase) {
     try {
       const record = {
         target_role: updatedProfile.targetRole,
@@ -90,18 +103,20 @@ export async function saveCandidateProfile(profile: CandidateProfile): Promise<C
       };
 
       if (updatedProfile.id) {
-        await supabase.from('profiles').update(record).eq('id', updatedProfile.id);
+        const { error } = await supabase.from('profiles').update(record).eq('id', updatedProfile.id);
+        if (error) {
+          console.warn('Failed to update candidate profile in Supabase:', error);
+        }
       } else {
-        const { data } = await supabase.from('profiles').insert([record]).select('id').single();
+        const { data, error } = await supabase.from('profiles').insert([record]).select('id').single();
         if (data?.id) {
           updatedProfile.id = data.id;
-          if (typeof window !== 'undefined') {
-            localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(updatedProfile));
-          }
+        } else if (error) {
+          console.warn('Failed to insert candidate profile in Supabase:', error);
         }
       }
-    } catch {
-      // Graceful fallback
+    } catch (err) {
+      console.warn('Exception while saving profile to Supabase:', err);
     }
   }
 

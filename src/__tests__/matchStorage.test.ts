@@ -1,27 +1,13 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { loadSessionMatches, saveSessionMatches, clearSessionMatches, getMatchStorageKey } from '../lib/storage/matchStorage';
+import { setSupabaseClient } from '../lib/supabase/client';
+import { createMockSupabaseClient } from './mockSupabase';
 import { MatchResult } from '../types';
 
 describe('matchStorage per-session isolation', () => {
-  const mockStorage: Record<string, string> = {};
-
   beforeEach(() => {
-    for (const key of Object.keys(mockStorage)) {
-      delete mockStorage[key];
-    }
-
-    // Setup global window and localStorage mock for tests
-    (global as any).window = {};
-    (global as any).localStorage = {
-      getItem: (key: string) => mockStorage[key] || null,
-      setItem: (key: string, value: string) => {
-        mockStorage[key] = value;
-      },
-      removeItem: (key: string) => {
-        delete mockStorage[key];
-      },
-    };
+    setSupabaseClient(createMockSupabaseClient());
   });
 
   const sampleMatch = (id: string, sessionId: string): MatchResult => ({
@@ -58,11 +44,11 @@ describe('matchStorage per-session isolation', () => {
     const loaded2 = await loadSessionMatches('session-2');
 
     assert.strictEqual(loaded1.length, 2);
-    assert.strictEqual(loaded1[0].id, 'm1');
-    assert.strictEqual(loaded1[1].id, 'm2');
+    assert.strictEqual(loaded1.some((m) => m.job.id === 'job-m1'), true);
+    assert.strictEqual(loaded1.some((m) => m.job.id === 'job-m2'), true);
 
     assert.strictEqual(loaded2.length, 1);
-    assert.strictEqual(loaded2[0].id, 'm3');
+    assert.strictEqual(loaded2[0].job.id, 'job-m3');
   });
 
   it('clears matches only for the specified session ID', async () => {

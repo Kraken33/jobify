@@ -255,9 +255,7 @@ export class ArbeitnowProvider extends BaseJobProvider {
         description: `${title} at ${company} in ${city}. Tags: ${tags.join(', ')}`,
       };
 
-      if (this.matchesCriteria(listing, criteria)) {
-        listings.push(listing);
-      }
+      listings.push(listing);
     }
 
     return listings;
@@ -266,23 +264,46 @@ export class ArbeitnowProvider extends BaseJobProvider {
   private async fetchLiveJobs(criteria: SearchCriteria): Promise<ProviderResult> {
     if (this.hasSearchTerms(criteria)) {
       try {
-        const html = await this.fetchWebSearchPage(criteria, 1);
-        const webListings = this.parseWebSearchHtml(html, criteria);
-        if (webListings.length > 0) {
-          let filtered = webListings;
-          if (criteria.publishedAtCursor) {
-            const cursorTime = new Date(criteria.publishedAtCursor).getTime();
-            if (!Number.isNaN(cursorTime)) {
-              filtered = webListings.filter((l) => {
-                if (!l.publishedAt) return false;
-                return new Date(l.publishedAt).getTime() > cursorTime;
-              });
+        let startPage = 1;
+        if (criteria.publishedAtCursor?.startsWith('page:')) {
+          const parsedPage = parseInt(criteria.publishedAtCursor.replace('page:', ''), 10);
+          if (!Number.isNaN(parsedPage) && parsedPage >= 1) {
+            startPage = parsedPage;
+          }
+        } else if (criteria.seenJobIds && criteria.seenJobIds.length > 0) {
+          startPage = Math.max(1, Math.floor(criteria.seenJobIds.length / 30) + 1);
+        }
+
+        const targetLimit = Math.max(1, Math.min(100, criteria.limit || 20));
+        const seenSet = new Set(criteria.seenJobIds || []);
+        const collectedListings: JobListing[] = [];
+        let currentPage = startPage;
+        const maxPagesToFetch = startPage + 3;
+
+        while (collectedListings.length < targetLimit && currentPage <= maxPagesToFetch) {
+          const html = await this.fetchWebSearchPage(criteria, currentPage);
+          const pageListings = this.parseWebSearchHtml(html, criteria);
+          if (!pageListings || pageListings.length === 0) {
+            break;
+          }
+
+          for (const listing of pageListings) {
+            if (!seenSet.has(listing.id)) {
+              seenSet.add(listing.id);
+              collectedListings.push(listing);
+              if (collectedListings.length >= targetLimit) {
+                break;
+              }
             }
           }
-          const newestPublishedAt = filtered[0]?.publishedAt ?? null;
+
+          currentPage++;
+        }
+
+        if (collectedListings.length > 0) {
           return {
-            listings: filtered,
-            nextCursor: newestPublishedAt ? { publishedAtCursor: newestPublishedAt } : null,
+            listings: collectedListings,
+            nextCursor: { publishedAtCursor: `page:${currentPage}` },
             fallback: false,
           };
         }
@@ -345,10 +366,7 @@ export class ArbeitnowProvider extends BaseJobProvider {
       if (seenIds.has(listing.id)) continue;
       seenIds.add(listing.id);
 
-      // Perform criteria filtering (keyword, remote/workMode, location)
-      if (this.matchesCriteria(listing, criteria)) {
-        listings.push(listing);
-      }
+      listings.push(listing);
     }
 
     // Sort newest-first based on publishedAt

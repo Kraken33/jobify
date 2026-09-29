@@ -129,13 +129,13 @@ export function CreateSessionModal({
 
     setIsSubmitting(true);
     try {
-      const id = typeof crypto !== "undefined" && crypto.randomUUID
+      const id = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
         ? crypto.randomUUID()
-        : "session_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9);
+        : undefined;
 
       const now = new Date().toISOString();
       const newSession: SearchSession = {
-        id,
+        id: id || ("session_" + Date.now()),
         profileId: profile.id,
         name: trimmedName,
         provider,

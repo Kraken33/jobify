@@ -377,4 +377,28 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
       `Expected "english speaking" exactly once, got: ${JSON.stringify(parsed)}`
     );
   });
+
+  it('fetches across multiple pages when limit exceeds single page results', async () => {
+    const requestedPages: number[] = [];
+    mockFetch(async (input) => {
+      const url = String(input);
+      const pageParam = new URL(url).searchParams.get('page');
+      const pageNum = parseInt(pageParam || '1', 10);
+      requestedPages.push(pageNum);
+
+      const html = `<div class="flex-shrink-0 h-16 w-16">
+        <a href="/jobs/companies/c/job-p${pageNum}" data-job-item-link="true" title="Job Page ${pageNum}">Link</a>
+      </div>`;
+      return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html' } });
+    });
+
+    const result = await provider.searchJobs({
+      targetRole: 'engineer',
+      limit: 2,
+    });
+
+    assert.ok(requestedPages.length >= 2, `Expected at least 2 pages requested, got ${requestedPages.length}`);
+    assert.strictEqual(result.listings.length, 2);
+    assert.strictEqual(result.nextCursor?.publishedAtCursor, `page:3`);
+  });
 });

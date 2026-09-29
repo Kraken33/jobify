@@ -1,8 +1,5 @@
 import { MatchResult } from '@/types';
-import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client';
-
-const APPLIED_STORAGE_KEY = 'jobify:applied';
-const APPLIED_MAX_ENTRIES = 200;
+import { getSupabaseClient } from '@/lib/supabase/client';
 
 export function getMatchStorageKey(sessionId: string): string {
   return `jobify:matches:${sessionId}`;
@@ -10,27 +7,46 @@ export function getMatchStorageKey(sessionId: string): string {
 
 export async function loadSessionMatches(sessionId: string): Promise<MatchResult[]> {
   const supabase = getSupabaseClient();
-  if (supabase && isSupabaseConfigured) {
-    try {
-      // Query job_matches by session_id
-      const query = supabase
-        .from('job_matches')
-        .select('*')
-        .order('created_at', { ascending: false });
+  if (!supabase) {
+    return [];
+  }
 
-      if (sessionId.startsWith('jobify:implicit:')) {
-        query.is('session_id', null);
-      } else {
-        query.eq('session_id', sessionId);
-      }
+  try {
+    let query = supabase
+      .from('job_matches')
+      .select('*')
+      .neq('status', 'dismissed')
+      .order('created_at', { ascending: false });
 
-      const { data, error } = await query;
-      if (data && !error && data.length > 0) {
-        return data.map((row) => ({
+    if (sessionId.startsWith('jobify:implicit:')) {
+      query = query.is('session_id', null);
+    } else {
+      query = query.eq('session_id', sessionId);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.warn('Failed to load session matches from Supabase:', error);
+      return [];
+    }
+
+    if (data && data.length > 0) {
+      const seenJobIds = new Set<string>();
+      const uniqueMatches: MatchResult[] = [];
+
+      for (const row of data) {
+        const jobId = row.provider_job_id || row.id;
+        if (seenJobIds.has(jobId)) {
+          continue;
+        }
+        seenJobIds.add(jobId);
+
+        uniqueMatches.push({
           id: row.id,
           sessionId: row.session_id || sessionId,
+          status: (row.status as 'active' | 'applied' | 'dismissed') || 'active',
           job: {
-            id: row.provider_job_id || row.id,
+            id: jobId,
             provider: row.provider || 'justjoin',
             title: row.title,
             company: row.company,
@@ -53,54 +69,101 @@ export async function loadSessionMatches(sessionId: string): Promise<MatchResult
             summary: row.summary || '',
           },
           createdAt: row.created_at,
-          // status absent in DB rows defaults to 'active' at render time
-        }));
+        });
       }
-    } catch (err) {
-      console.warn('Failed to load session matches from Supabase, falling back to localStorage:', err);
-    }
-  }
 
-  if (typeof window !== 'undefined') {
-    try {
-      const raw = localStorage.getItem(getMatchStorageKey(sessionId));
-      if (raw) {
-        return JSON.parse(raw);
-      }
-    } catch {
-      // Ignore JSON parse errors
+      return uniqueMatches;
     }
+  } catch (err) {
+    console.warn('Exception loading session matches from Supabase:', err);
   }
 
   return [];
 }
 
 export async function saveSessionMatches(sessionId: string, matches: MatchResult[]): Promise<void> {
-  if (typeof window !== 'undefined') {
-    try {
-      // Cap at 100 most recent items to avoid localStorage quota issues
-      // status field is preserved as-is in the serialised object
-      const capped = matches.slice(0, 100);
-      localStorage.setItem(getMatchStorageKey(sessionId), JSON.stringify(capped));
-    } catch {
-      // Ignore quota errors
+  const supabase = getSupabaseClient();
+  if (!supabase || matches.length === 0) {
+    return;
+  }
+
+  try {
+    const isImplicit = sessionId.startsWith('jobify:implicit:');
+    const rows = matches.map((m) => ({
+      session_id: isImplicit ? null : sessionId,
+      provider: m.job.provider || 'justjoin',
+      provider_job_id: m.job.id,
+      title: m.job.title,
+      company: m.job.company,
+      city: m.job.city || null,
+      is_remote: m.job.isRemote ?? false,
+      seniority: m.job.seniority || null,
+      url: m.job.url,
+      salary_min: m.job.salaryRange?.min || null,
+      salary_max: m.job.salaryRange?.max || null,
+      salary_currency: m.job.salaryRange?.currency || 'PLN',
+      required_skills: m.job.requiredSkills || [],
+      fit_score: m.evaluation.score,
+      verdict: m.evaluation.verdict,
+      pros: m.evaluation.pros || [],
+      gaps: m.evaluation.gaps || [],
+      summary: m.evaluation.summary || null,
+      status: m.status || 'active',
+    }));
+
+    if (isImplicit) {
+      for (const row of rows) {
+        const { error: upsertErr } = await supabase
+          .from('job_matches')
+          .upsert(row, { onConflict: 'provider_job_id' });
+        if (upsertErr) {
+          await supabase.from('job_matches').insert([row]);
+        }
+      }
+    } else {
+      const { error: upsertErr } = await supabase
+        .from('job_matches')
+        .upsert(rows, { onConflict: 'session_id,provider_job_id', ignoreDuplicates: true });
+      if (upsertErr) {
+        for (const row of rows) {
+          await supabase.from('job_matches').insert([row]);
+        }
+      }
     }
+  } catch (err) {
+    console.warn('Exception while saving session matches in Supabase:', err);
+  }
+}
+
+export async function updateMatchStatus(
+  matchId: string,
+  status: 'active' | 'applied' | 'dismissed'
+): Promise<void> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return;
+  }
+
+  try {
+    const { error } = await supabase
+      .from('job_matches')
+      .update({ status })
+      .or(`id.eq.${matchId},provider_job_id.eq.${matchId}`);
+    if (error) {
+      console.warn('Failed to update match status in Supabase:', error);
+    }
+  } catch (err) {
+    console.warn('Exception updating match status in Supabase:', err);
   }
 }
 
 export async function clearSessionMatches(sessionId: string): Promise<void> {
-  if (typeof window !== 'undefined') {
-    try {
-      localStorage.removeItem(getMatchStorageKey(sessionId));
-    } catch {
-      // Ignore
-    }
-  }
-
   const supabase = getSupabaseClient();
-  if (supabase && isSupabaseConfigured) {
+  if (supabase) {
     try {
-      if (!sessionId.startsWith('jobify:implicit:')) {
+      if (sessionId.startsWith('jobify:implicit:')) {
+        await supabase.from('job_matches').delete().is('session_id', null);
+      } else {
         await supabase.from('job_matches').delete().eq('session_id', sessionId);
       }
     } catch (err) {
@@ -109,46 +172,71 @@ export async function clearSessionMatches(sessionId: string): Promise<void> {
   }
 }
 
-// ─── Global Applied Store ────────────────────────────────────────────────────
-// Stored in localStorage under a single global key, independent of sessions.
+// ─── Global Applied Store (Supabase-backed) ──────────────────────────────────
 
-export function loadAppliedMatches(): MatchResult[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(APPLIED_STORAGE_KEY);
-    if (raw) {
-      return JSON.parse(raw) as MatchResult[];
-    }
-  } catch {
-    // Ignore parse errors
+export async function loadAppliedMatches(): Promise<MatchResult[]> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return [];
   }
+
+  try {
+    const { data, error } = await supabase
+      .from('job_matches')
+      .select('*')
+      .eq('status', 'applied')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('Failed to load applied matches from Supabase:', error);
+      return [];
+    }
+
+    if (data && data.length > 0) {
+      return data.map((row) => ({
+        id: row.id,
+        sessionId: row.session_id,
+        status: 'applied' as const,
+        job: {
+          id: row.provider_job_id || row.id,
+          provider: row.provider || 'justjoin',
+          title: row.title,
+          company: row.company,
+          city: row.city,
+          isRemote: row.is_remote ?? false,
+          seniority: row.seniority || 'mid',
+          requiredSkills: row.required_skills || [],
+          salaryRange: {
+            min: row.salary_min,
+            max: row.salary_max,
+            currency: row.salary_currency || 'PLN',
+          },
+          url: row.url,
+        },
+        evaluation: {
+          score: row.fit_score || 0,
+          verdict: row.verdict || 'Moderate Match',
+          pros: row.pros || [],
+          gaps: row.gaps || [],
+          summary: row.summary || '',
+        },
+        createdAt: row.created_at,
+      }));
+    }
+  } catch (err) {
+    console.warn('Exception loading applied matches from Supabase:', err);
+  }
+
   return [];
 }
 
-export function saveAppliedMatch(match: MatchResult): void {
-  if (typeof window === 'undefined') return;
-  try {
-    const existing = loadAppliedMatches();
-    // Remove any prior entry for the same job to avoid duplicates
-    const deduplicated = existing.filter((m) => m.job.id !== match.job.id);
-    // Prepend (most recent first) and cap
-    const updated = [{ ...match, status: 'applied' as const }, ...deduplicated].slice(
-      0,
-      APPLIED_MAX_ENTRIES,
-    );
-    localStorage.setItem(APPLIED_STORAGE_KEY, JSON.stringify(updated));
-  } catch {
-    // Ignore quota errors
+export async function saveAppliedMatch(match: MatchResult): Promise<void> {
+  await updateMatchStatus(match.id, 'applied');
+  if (match.job?.id && match.job.id !== match.id) {
+    await updateMatchStatus(match.job.id, 'applied');
   }
 }
 
-export function removeAppliedMatch(matchId: string): void {
-  if (typeof window === 'undefined') return;
-  try {
-    const existing = loadAppliedMatches();
-    const updated = existing.filter((m) => m.id !== matchId);
-    localStorage.setItem(APPLIED_STORAGE_KEY, JSON.stringify(updated));
-  } catch {
-    // Ignore
-  }
+export async function removeAppliedMatch(matchId: string): Promise<void> {
+  await updateMatchStatus(matchId, 'active');
 }

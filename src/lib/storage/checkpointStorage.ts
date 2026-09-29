@@ -1,16 +1,12 @@
 import { ScanCheckpoint } from '@/types';
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
-export function getCheckpointStorageKey(sessionId: string, providerId: string): string {
-  return `jobify:checkpoint:${sessionId}:${providerId}`;
-}
-
 export async function loadCheckpoint(
   sessionId: string,
   providerId: string
 ): Promise<ScanCheckpoint | null> {
   const supabase = getSupabaseClient();
-  if (supabase && isSupabaseConfigured) {
+  if (supabase) {
     try {
       const { data, error } = await supabase
         .from('scan_checkpoints')
@@ -30,18 +26,7 @@ export async function loadCheckpoint(
         };
       }
     } catch (err) {
-      console.warn('Failed to load checkpoint from Supabase, falling back to localStorage:', err);
-    }
-  }
-
-  if (typeof window !== 'undefined') {
-    try {
-      const raw = localStorage.getItem(getCheckpointStorageKey(sessionId, providerId));
-      if (raw) {
-        return JSON.parse(raw);
-      }
-    } catch {
-      // Ignore localStorage parse errors
+      console.warn('Failed to load checkpoint from Supabase:', err);
     }
   }
 
@@ -49,20 +34,8 @@ export async function loadCheckpoint(
 }
 
 export async function saveCheckpoint(checkpoint: ScanCheckpoint): Promise<void> {
-  // Always save to localStorage if in browser
-  if (typeof window !== 'undefined') {
-    try {
-      localStorage.setItem(
-        getCheckpointStorageKey(checkpoint.sessionId, checkpoint.providerId),
-        JSON.stringify(checkpoint)
-      );
-    } catch {
-      // Ignore quota errors
-    }
-  }
-
   const supabase = getSupabaseClient();
-  if (supabase && isSupabaseConfigured) {
+  if (supabase) {
     try {
       const row = {
         session_id: checkpoint.sessionId,
@@ -73,34 +46,32 @@ export async function saveCheckpoint(checkpoint: ScanCheckpoint): Promise<void> 
         last_scan_at: checkpoint.lastScanAt,
       };
 
-      await supabase
+      const { error } = await supabase
         .from('scan_checkpoints')
         .upsert(row, { onConflict: 'session_id,provider_id' });
+      if (error) {
+        console.warn('Failed to upsert checkpoint in Supabase:', error);
+      }
     } catch (err) {
-      console.warn('Failed to upsert checkpoint to Supabase:', err);
+      console.warn('Exception while saving checkpoint to Supabase:', err);
     }
   }
 }
 
 export async function clearCheckpoint(sessionId: string, providerId: string): Promise<void> {
-  if (typeof window !== 'undefined') {
-    try {
-      localStorage.removeItem(getCheckpointStorageKey(sessionId, providerId));
-    } catch {
-      // Ignore
-    }
-  }
-
   const supabase = getSupabaseClient();
-  if (supabase && isSupabaseConfigured) {
+  if (supabase) {
     try {
-      await supabase
+      const { error } = await supabase
         .from('scan_checkpoints')
         .delete()
         .eq('session_id', sessionId)
         .eq('provider_id', providerId);
+      if (error) {
+        console.warn('Failed to clear checkpoint from Supabase:', error);
+      }
     } catch (err) {
-      console.warn('Failed to clear checkpoint in Supabase:', err);
+      console.warn('Exception while clearing checkpoint in Supabase:', err);
     }
   }
 }

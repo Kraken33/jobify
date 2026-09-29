@@ -2,26 +2,13 @@ import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert";
 import { saveSession, loadSessions, deleteSession, createImplicitSession } from "../lib/storage/sessionStorage";
 import { saveSessionMatches, loadSessionMatches, clearSessionMatches } from "../lib/storage/matchStorage";
+import { setSupabaseClient } from "../lib/supabase/client";
+import { createMockSupabaseClient } from "./mockSupabase";
 import { CandidateProfile, SearchSession, MatchResult } from "../types";
 
 describe("search sessions and match isolation integration", () => {
-  const mockStorage: Record<string, string> = {};
-
   beforeEach(() => {
-    for (const key of Object.keys(mockStorage)) {
-      delete mockStorage[key];
-    }
-
-    (global as unknown as { window: unknown; localStorage: unknown }).window = {};
-    (global as unknown as { window: unknown; localStorage: unknown }).localStorage = {
-      getItem: (key: string) => mockStorage[key] || null,
-      setItem: (key: string, value: string) => {
-        mockStorage[key] = value;
-      },
-      removeItem: (key: string) => {
-        delete mockStorage[key];
-      },
-    };
+    setSupabaseClient(createMockSupabaseClient());
   });
 
   const testProfile: CandidateProfile = {
@@ -98,15 +85,15 @@ describe("search sessions and match isolation integration", () => {
 
     let loaded = await loadSessions(testProfile.id);
     assert.strictEqual(loaded.length, 2);
-    assert.strictEqual(loaded.some((s) => s.id === "session-fullstack"), true);
-    assert.strictEqual(loaded.some((s) => s.id === "session-javascript"), true);
+    assert.strictEqual(loaded.some((s) => s.name === "Full Stack Track"), true);
+    assert.strictEqual(loaded.some((s) => s.name === "JavaScript Track"), true);
 
     // Delete session A
     await deleteSession("session-fullstack");
 
     loaded = await loadSessions(testProfile.id);
     assert.strictEqual(loaded.length, 1);
-    assert.strictEqual(loaded[0].id, "session-javascript");
+    assert.strictEqual(loaded[0].name, "JavaScript Track");
   });
 
   it("keeps match pools strictly isolated when context switching across sessions", async () => {
@@ -121,11 +108,11 @@ describe("search sessions and match isolation integration", () => {
     const activeMatchesForB = await loadSessionMatches("session-javascript");
 
     assert.strictEqual(activeMatchesForA.length, 2);
-    assert.strictEqual(activeMatchesForA.map((m) => m.id).includes("m-a-1"), true);
-    assert.strictEqual(activeMatchesForA.map((m) => m.id).includes("m-b-1"), false);
+    assert.strictEqual(activeMatchesForA.some((m) => m.job.id === "job-m-a-1"), true);
+    assert.strictEqual(activeMatchesForA.some((m) => m.job.id === "job-m-b-1"), false);
 
     assert.strictEqual(activeMatchesForB.length, 1);
-    assert.strictEqual(activeMatchesForB[0].id, "m-b-1");
+    assert.strictEqual(activeMatchesForB[0].job.id, "job-m-b-1");
 
     // Clear matches for session A on reset
     await clearSessionMatches("session-fullstack");
@@ -135,6 +122,20 @@ describe("search sessions and match isolation integration", () => {
 
     assert.strictEqual(reloadedA.length, 0);
     assert.strictEqual(reloadedB.length, 1);
-    assert.strictEqual(reloadedB[0].id, "m-b-1");
+    assert.strictEqual(reloadedB[0].job.id, "job-m-b-1");
+  });
+
+  it("handles duplicate match saves idempotently without inflating count on reload", async () => {
+    const matchA1 = sampleMatch("m-dup-1", "session-fullstack");
+    const matchA2 = sampleMatch("m-dup-2", "session-fullstack");
+
+    // Save twice
+    await saveSessionMatches("session-fullstack", [matchA1, matchA2]);
+    await saveSessionMatches("session-fullstack", [matchA1, matchA2]);
+
+    const loaded = await loadSessionMatches("session-fullstack");
+    assert.strictEqual(loaded.length, 2);
+    assert.strictEqual(loaded.filter((m) => m.job.id === "job-m-dup-1").length, 1);
+    assert.strictEqual(loaded.filter((m) => m.job.id === "job-m-dup-2").length, 1);
   });
 });
