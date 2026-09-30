@@ -257,6 +257,7 @@ export async function POST(request: NextRequest) {
           salary_max: m.job.salaryRange?.max,
           salary_currency: m.job.salaryRange?.currency,
           required_skills: m.job.requiredSkills,
+          published_at: m.job.publishedAt || null,
           fit_score: m.evaluation.score,
           verdict: m.evaluation.verdict,
           pros: m.evaluation.pros,

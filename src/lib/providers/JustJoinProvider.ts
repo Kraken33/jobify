@@ -136,7 +136,8 @@ export class JustJoinProvider extends BaseJobProvider {
    * caller can degrade gracefully to the deterministic fallback pool.
    */
   private async fetchApifyOffers(criteria: SearchCriteria, token: string): Promise<ProviderResult> {
-    const endpoint = `${APIFY_ACTOR_ENDPOINT}?token=${encodeURIComponent(token)}`;
+    const searchUrl = this.buildSearchUrl(criteria);
+    const endpoint = `${APIFY_ACTOR_ENDPOINT}?targetUrl=${encodeURIComponent(searchUrl)}&token=${encodeURIComponent(token)}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), APIFY_REQUEST_TIMEOUT_MS);
 
@@ -177,34 +178,58 @@ export class JustJoinProvider extends BaseJobProvider {
     return this.normalizeApifyDataset(rawItems, criteria);
   }
 
-  /** Serializes search criteria into the actor's input schema. */
-  public buildApifyInput(criteria: SearchCriteria): Record<string, unknown> {
-    const requestedLimit = criteria.limit && criteria.limit > 0 ? criteria.limit : 25;
-    const input: Record<string, unknown> = {
-      maxItems: Math.min(requestedLimit, APIFY_MAX_ITEMS),
-      sortBy: 'published',
-      // Fast overview scrape; full detail extraction requires a proxy and is slow.
-      extractFullDetails: false,
-      location: this.mapLocationToApify(criteria.location),
-    };
+  /**
+   * Constructs the canonical JustJoin.it search URL from criteria.
+   * e.g. https://justjoin.it/all-locations/all?keyword=TypeScript&experience-level=senior&workplace-type=remote
+   */
+  public buildSearchUrl(criteria: SearchCriteria): string {
+    const location = this.mapLocationToApify(criteria.location);
+    const basePath = `https://justjoin.it/${location}/all`;
+    const params = new URLSearchParams();
 
     const keyword = criteria.targetRole || criteria.keywords?.[0];
-    if (keyword) {
-      input.keyword = keyword;
+    if (keyword && keyword.trim()) {
+      params.set('keyword', keyword.trim());
     }
 
     if (criteria.seniority) {
+      params.set('experience-level', criteria.seniority);
+    }
+
+    const workplaceType = this.mapWorkModeToApify(criteria.workMode);
+    if (workplaceType) {
+      params.set('workplace-type', workplaceType);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `${basePath}?${queryString}` : basePath;
+  }
+
+  /** Serializes search criteria into the actor's input schema. */
+  public buildApifyInput(criteria: SearchCriteria): Record<string, unknown> {
+    const requestedLimit = criteria.limit && criteria.limit > 0 ? criteria.limit : 25;
+    const searchUrl = this.buildSearchUrl(criteria);
+
+    const input: Record<string, unknown> = {
+      startUrls: [searchUrl],
+      limit: Math.min(requestedLimit, APIFY_MAX_ITEMS),
+      // Fast overview scrape; full detail extraction requires a proxy and is slow.
+      extractFullDetails: false,
+    };
+
+    const keyword = criteria.targetRole || criteria.keywords?.[0];
+    if (keyword && keyword.trim()) {
+      input.keyword = keyword.trim();
+    }
+
+    if (criteria.seniority) {
+      input.experience = criteria.seniority;
       input.experienceLevel = [criteria.seniority];
     }
 
     const workplaceType = this.mapWorkModeToApify(criteria.workMode);
     if (workplaceType) {
       input.workplaceType = [workplaceType];
-    }
-
-    const category = criteria.skills?.[0] ? this.mapSkillToCategory(criteria.skills[0]) : null;
-    if (category) {
-      input.category = category;
     }
 
     if (criteria.spokenLanguages && criteria.spokenLanguages.length > 0) {
@@ -288,7 +313,8 @@ export class JustJoinProvider extends BaseJobProvider {
       }
     }
 
-    const newestPublishedAt = filtered[0]?.publishedAt ?? null;
+    const newestPublishedAt =
+      filtered[0]?.publishedAt ?? (criteria.publishedAtCursor ? criteria.publishedAtCursor : null);
 
     return {
       listings: filtered,
@@ -695,18 +721,23 @@ export class JustJoinProvider extends BaseJobProvider {
     const userRole = criteria.targetRole || criteria.keywords?.[0] || criteria.skills?.[0] || 'Full Stack Developer';
     const now = Date.now();
 
-    const pageSize = FALLBACK_PAGE_SIZE;
+    const pageSize = criteria.limit && criteria.limit > 0 ? Math.min(criteria.limit, 50) : FALLBACK_PAGE_SIZE;
     const totalItems = FALLBACK_JOB_POOL.length;
     const effectivePage = Math.max(1, page);
     const startIndex = ((effectivePage - 1) * pageSize) % totalItems;
-    const pageItems = FALLBACK_JOB_POOL.slice(startIndex, startIndex + pageSize);
+
+    const pageItems: typeof FALLBACK_JOB_POOL = [];
+    for (let i = 0; i < pageSize; i++) {
+      const idx = (startIndex + i) % totalItems;
+      pageItems.push(FALLBACK_JOB_POOL[idx]);
+    }
 
     const baseTimestamp = now - (effectivePage - 1) * 3600 * 1000 * 24;
 
     const listings: JobListing[] = pageItems.map((item, idx) => {
       const itemTimestamp = new Date(baseTimestamp - idx * 60000).toISOString();
       return {
-        id: `justjoin_demo_p${effectivePage}_${item.id}`,
+        id: `justjoin_demo_p${effectivePage}_${item.id}_${idx}`,
         provider: 'justjoin',
         title: item.titleTemplate(userRole),
         company: item.company,

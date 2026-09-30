@@ -60,6 +60,7 @@ export async function loadSessionMatches(sessionId: string): Promise<MatchResult
               currency: row.salary_currency || 'PLN',
             },
             url: row.url,
+            publishedAt: row.published_at || undefined,
           },
           evaluation: {
             score: row.fit_score || 0,
@@ -103,6 +104,7 @@ export async function saveSessionMatches(sessionId: string, matches: MatchResult
       salary_max: m.job.salaryRange?.max || null,
       salary_currency: m.job.salaryRange?.currency || 'PLN',
       required_skills: m.job.requiredSkills || [],
+      published_at: m.job.publishedAt || null,
       fit_score: m.evaluation.score,
       verdict: m.evaluation.verdict,
       pros: m.evaluation.pros || [],
@@ -316,6 +318,7 @@ export async function loadAppliedMatches(): Promise<MatchResult[]> {
               currency: row.salary_currency || 'PLN',
             },
             url: row.url,
+            publishedAt: row.published_at || undefined,
           },
           evaluation: {
             score: row.fit_score || 0,

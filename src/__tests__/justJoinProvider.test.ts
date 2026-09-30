@@ -172,6 +172,30 @@ describe('JustJoinProvider normalization', () => {
     const withoutLang = provider.buildApifyInput({ skills: ['React'] });
     assert.strictEqual('languages' in withoutLang, false);
   });
+
+  it('builds canonical JustJoin search URLs correctly in buildSearchUrl', () => {
+    const url = provider.buildSearchUrl({
+      targetRole: 'Senior React Developer',
+      skills: ['React', 'TypeScript'],
+      seniority: 'senior',
+      workMode: 'remote',
+      location: 'Warszawa',
+    });
+
+    assert.strictEqual(
+      url,
+      'https://justjoin.it/warszawa/all?keyword=Senior+React+Developer&experience-level=senior&workplace-type=remote'
+    );
+
+    const simpleUrl = provider.buildSearchUrl({});
+    assert.strictEqual(simpleUrl, 'https://justjoin.it/all-locations/all');
+  });
+
+  it('generates dynamic batch limit in fallback generator when criteria.limit is specified', () => {
+    const res = provider.getSampleFallbackListings({ limit: 12 }, 1);
+    assert.strictEqual(res.fallback, true);
+    assert.strictEqual(res.listings.length, 12);
+  });
 });
 
 
@@ -270,7 +294,8 @@ describe('JustJoinProvider Apify scraper integration', () => {
     assert.strictEqual(withVariants.salaryRange?.max, 38000);
     assert.strictEqual(withVariants.url.startsWith('https://justjoin.it/offers/'), true);
   });
-  it('sorts newest-first, deduplicates, and filters by the published cursor', () => {
+
+  it('sorts newest-first, deduplicates, and preserves published cursor on delta scans', () => {
     const items: ApifyJustJoinItem[] = [
       {
         jobTitle: 'Older Role',
@@ -305,6 +330,13 @@ describe('JustJoinProvider Apify scraper integration', () => {
     assert.strictEqual(filtered.listings[0].id, 'justjoin_newest-role');
     assert.strictEqual(filtered.listings[0].publishedAt, '2026-09-22T11:00:00.000Z');
     assert.strictEqual(filtered.nextCursor?.publishedAtCursor, '2026-09-22T11:00:00.000Z');
+
+    // Test cursor retention when 0 items match
+    const zeroMatch = provider.normalizeApifyDataset(items, {
+      publishedAtCursor: '2026-09-30T00:00:00.000Z',
+    });
+    assert.strictEqual(zeroMatch.listings.length, 0);
+    assert.strictEqual(zeroMatch.nextCursor?.publishedAtCursor, '2026-09-30T00:00:00.000Z');
 
     const unfiltered = provider.normalizeApifyDataset(items);
     assert.strictEqual(unfiltered.listings.length, 2);
@@ -353,15 +385,17 @@ describe('JustJoinProvider Apify scraper integration', () => {
 
     assert.strictEqual(capturedUrl.startsWith(APIFY_ACTOR_ENDPOINT), true);
     assert.strictEqual(capturedUrl.includes('token=apify_api_test_token'), true);
+    assert.strictEqual(capturedUrl.includes('targetUrl=https'), true);
     assert.deepStrictEqual(capturedBody, {
-      maxItems: 20,
-      sortBy: 'published',
+      startUrls: [
+        'https://justjoin.it/krakow/all?keyword=Senior+React+Developer&experience-level=mid&workplace-type=remote',
+      ],
+      limit: 20,
       extractFullDetails: false,
-      location: 'krakow',
       keyword: 'Senior React Developer',
+      experience: 'mid',
       experienceLevel: ['mid'],
       workplaceType: ['remote'],
-      category: 'javascript',
     });
     assert.strictEqual('apifyToken' in capturedBody, false);
 

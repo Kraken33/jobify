@@ -130,5 +130,29 @@ describe('matchStorage per-session isolation', () => {
     assert.strictEqual(loaded.length, 1);
     assert.strictEqual(loaded[0].evaluation.score, 0);
   });
+
+  it('persists and rehydrates publishedAt for session matches and applied matches', async () => {
+    const pubDate1 = '2026-09-20T08:30:00.000Z';
+    const pubDate2 = '2026-09-25T14:15:00.000Z';
+    const match1 = sampleMatch('m-pub-1', 'session-1');
+    match1.job.publishedAt = pubDate1;
+    const match2 = sampleMatch('m-pub-2', 'session-1');
+    match2.job.publishedAt = pubDate2;
+
+    await saveSessionMatches('session-1', [match1, match2]);
+
+    const loaded = await loadSessionMatches('session-1');
+    assert.strictEqual(loaded.length, 2);
+    const loaded1 = loaded.find((m) => m.job.id === 'job-m-pub-1');
+    const loaded2 = loaded.find((m) => m.job.id === 'job-m-pub-2');
+    assert.strictEqual(loaded1?.job.publishedAt, pubDate1);
+    assert.strictEqual(loaded2?.job.publishedAt, pubDate2);
+
+    // Test applied matches rehydration
+    await updateMatchStatus('m-pub-1', 'applied', 'job-m-pub-1');
+    const applied = await loadAppliedMatches();
+    const applied1 = applied.find((m) => m.job.id === 'job-m-pub-1');
+    assert.strictEqual(applied1?.job.publishedAt, pubDate1);
+  });
 });
 
