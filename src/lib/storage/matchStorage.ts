@@ -232,35 +232,48 @@ export async function loadAppliedMatches(): Promise<MatchResult[]> {
     }
 
     if (data && data.length > 0) {
-      return data.map((row) => ({
-        id: row.id,
-        sessionId: row.session_id,
-        status: 'applied' as const,
-        job: {
-          id: row.provider_job_id || row.id,
-          provider: row.provider || 'justjoin',
-          title: row.title,
-          company: row.company,
-          city: row.city,
-          isRemote: row.is_remote ?? false,
-          seniority: row.seniority || 'mid',
-          requiredSkills: row.required_skills || [],
-          salaryRange: {
-            min: row.salary_min,
-            max: row.salary_max,
-            currency: row.salary_currency || 'PLN',
+      const seenJobIds = new Set<string>();
+      const uniqueMatches: MatchResult[] = [];
+
+      for (const row of data) {
+        const jobId = row.provider_job_id || row.id;
+        if (seenJobIds.has(jobId)) {
+          continue;
+        }
+        seenJobIds.add(jobId);
+
+        uniqueMatches.push({
+          id: row.id,
+          sessionId: row.session_id,
+          status: 'applied' as const,
+          job: {
+            id: jobId,
+            provider: row.provider || 'justjoin',
+            title: row.title,
+            company: row.company,
+            city: row.city,
+            isRemote: row.is_remote ?? false,
+            seniority: row.seniority || 'mid',
+            requiredSkills: row.required_skills || [],
+            salaryRange: {
+              min: row.salary_min,
+              max: row.salary_max,
+              currency: row.salary_currency || 'PLN',
+            },
+            url: row.url,
           },
-          url: row.url,
-        },
-        evaluation: {
-          score: row.fit_score || 0,
-          verdict: row.verdict || 'Moderate Match',
-          pros: row.pros || [],
-          gaps: row.gaps || [],
-          summary: row.summary || '',
-        },
-        createdAt: row.created_at,
-      }));
+          evaluation: {
+            score: row.fit_score || 0,
+            verdict: row.verdict || 'Moderate Match',
+            pros: row.pros || [],
+            gaps: row.gaps || [],
+            summary: row.summary || '',
+          },
+          createdAt: row.created_at,
+        });
+      }
+
+      return uniqueMatches;
     }
   } catch (err) {
     console.warn('Exception loading applied matches from Supabase:', err);

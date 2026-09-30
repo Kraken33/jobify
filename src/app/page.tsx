@@ -17,7 +17,6 @@ import { loadSessions, createImplicitSession, saveSession, deleteSession } from 
 import { clearCheckpoint } from '@/lib/storage/checkpointStorage';
 import {
   loadSessionMatches,
-  saveSessionMatches,
   clearSessionMatches,
   loadAppliedMatches,
   saveAppliedMatch,
@@ -169,9 +168,6 @@ export default function Home() {
         setMatches((prev) => {
           const prevIds = new Set(prev.map((m) => m.job.id));
           const newUnique = returnedMatches.filter((m) => !prevIds.has(m.job.id));
-          if (currentSessionId && newUnique.length > 0) {
-            saveSessionMatches(currentSessionId, newUnique);
-          }
           return [...prev, ...newUnique];
         });
       }
