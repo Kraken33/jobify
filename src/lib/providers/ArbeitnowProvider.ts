@@ -260,6 +260,20 @@ export class ArbeitnowProvider extends BaseJobProvider {
       const requiredSkills = this.extractSkills(tags, chunk, criteria);
       const spokenLanguages = this.extractSpokenLanguages(tags, chunk);
 
+      // Extract published date from <time datetime="...">
+      const timeMatch = chunk.match(/<time[^>]*datetime="([^"]+)"/i);
+      let publishedAt = new Date().toISOString();
+      if (timeMatch && timeMatch[1]) {
+        const rawDateStr = timeMatch[1].trim();
+        const isoCandidate = rawDateStr.includes('T')
+          ? rawDateStr
+          : `${rawDateStr.replace(' ', 'T')}Z`;
+        const parsedDate = new Date(isoCandidate);
+        if (!Number.isNaN(parsedDate.getTime())) {
+          publishedAt = parsedDate.toISOString();
+        }
+      }
+
       const listing: JobListing = {
         id,
         provider: 'arbeitnow',
@@ -272,7 +286,7 @@ export class ArbeitnowProvider extends BaseJobProvider {
         requiredSkills,
         spokenLanguages: spokenLanguages.length > 0 ? spokenLanguages : undefined,
         url: fullUrl,
-        publishedAt: new Date().toISOString(),
+        publishedAt,
         description: `${title} at ${company} in ${city}. Tags: ${tags.join(', ')}`,
       };
 
@@ -288,12 +302,18 @@ export class ArbeitnowProvider extends BaseJobProvider {
     if (this.hasSearchTerms(criteria)) {
       try {
         const seenSet = new Set(criteria.seenJobIds || []);
+        const isDeltaScan = Boolean(
+          criteria.publishedAtCursor && !criteria.publishedAtCursor.startsWith('page:')
+        );
+        const cursorTime = isDeltaScan ? new Date(criteria.publishedAtCursor!).getTime() : NaN;
+
         const rawListings: JobListing[] = [];
         const seenIds = new Set<string>();
         let currentPage = 1;
         const maxPagesToFetch = Math.max(3, Math.min(5, Math.ceil(targetLimit / 25)));
+        let hitBoundary = false;
 
-        while (rawListings.length < targetLimit && currentPage <= maxPagesToFetch) {
+        while (rawListings.length < targetLimit && currentPage <= maxPagesToFetch && !hitBoundary) {
           const html = await this.fetchWebSearchPage(criteria, currentPage);
           const pageListings = this.parseWebSearchHtml(html, criteria);
           if (!pageListings || pageListings.length === 0) {
@@ -301,49 +321,60 @@ export class ArbeitnowProvider extends BaseJobProvider {
           }
 
           for (const listing of pageListings) {
-            if (!seenIds.has(listing.id)) {
-              seenIds.add(listing.id);
+            if (seenIds.has(listing.id)) continue;
+            seenIds.add(listing.id);
+
+            if (isDeltaScan && !Number.isNaN(cursorTime)) {
+              const listingTime = listing.publishedAt ? new Date(listing.publishedAt).getTime() : 0;
+              // If listing is at or older than cursor or already in seenSet, stop at boundary
+              if (listingTime <= cursorTime || seenSet.has(listing.id)) {
+                hitBoundary = true;
+                break;
+              }
               rawListings.push(listing);
+            } else {
+              if (!seenSet.has(listing.id)) {
+                rawListings.push(listing);
+              }
+            }
+
+            if (rawListings.length >= targetLimit) {
+              break;
             }
           }
 
           currentPage++;
         }
 
-        if (rawListings.length > 0) {
-          // Sort newest-first based on publishedAt
-          rawListings.sort((a, b) => {
-            const aTime = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
-            const bTime = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
-            return bTime - aTime;
+        // Sort newest-first based on publishedAt
+        rawListings.sort((a, b) => {
+          const aTime = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+          const bTime = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+          return bTime - aTime;
+        });
+
+        let filtered = rawListings;
+        if (isDeltaScan && !Number.isNaN(cursorTime)) {
+          filtered = filtered.filter((listing) => {
+            if (!listing.publishedAt) return false;
+            return new Date(listing.publishedAt).getTime() > cursorTime;
           });
-
-          let filtered = rawListings;
-          if (criteria.publishedAtCursor && !criteria.publishedAtCursor.startsWith('page:')) {
-            const cursorTime = new Date(criteria.publishedAtCursor).getTime();
-            if (!Number.isNaN(cursorTime)) {
-              filtered = rawListings.filter((listing) => {
-                if (!listing.publishedAt) return false;
-                return new Date(listing.publishedAt).getTime() > cursorTime;
-              });
-            }
-          }
-
-          // Apply seenJobIds deduplication
-          filtered = filtered.filter((listing) => !seenSet.has(listing.id));
-
-          if (filtered.length > targetLimit) {
-            filtered = filtered.slice(0, targetLimit);
-          }
-
-          const newestPublishedAt = filtered[0]?.publishedAt ?? rawListings[0]?.publishedAt ?? null;
-
-          return {
-            listings: filtered,
-            nextCursor: newestPublishedAt ? { publishedAtCursor: newestPublishedAt } : null,
-            fallback: false,
-          };
         }
+
+        filtered = filtered.filter((listing) => !seenSet.has(listing.id));
+
+        if (filtered.length > targetLimit) {
+          filtered = filtered.slice(0, targetLimit);
+        }
+
+        const newestPublishedAt =
+          filtered[0]?.publishedAt ?? (isDeltaScan ? criteria.publishedAtCursor : null);
+
+        return {
+          listings: filtered,
+          nextCursor: newestPublishedAt ? { publishedAtCursor: newestPublishedAt } : null,
+          fallback: false,
+        };
       } catch (webError) {
         console.warn(
           'Arbeitnow web search attempt failed, trying REST API fallback:',

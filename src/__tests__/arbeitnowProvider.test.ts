@@ -234,6 +234,9 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
           <h3 itemprop="title">
             <a href="https://www.arbeitnow.com/jobs/companies/hopn-ug/javascript-developer-puchheim-481737" data-job-item-link="true" title="JavaScript Developer">JavaScript Developer</a>
           </h3>
+          <p title="Posted 38 minutes ago">
+            <time datetime="2026-09-30 15:00:30">38m</time>
+          </p>
           <span class="text-gray-600">Puchheim</span>
           <button data-key="Remote">Remote</button>
           <button data-key="JavaScript">JavaScript</button>
@@ -269,7 +272,7 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
     assert.ok(url.includes('date_posted=all'));
   });
 
-  it('parses job listings from web search HTML', () => {
+  it('parses job listings from web search HTML including <time datetime="...">', () => {
     const listings = provider.parseWebSearchHtml(SAMPLE_HTML_SEARCH, {
       targetRole: 'JavaScript Developer',
     });
@@ -280,6 +283,7 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
     assert.strictEqual(listings[0].company, 'HOPn UG');
     assert.strictEqual(listings[0].city, 'Puchheim');
     assert.strictEqual(listings[0].isRemote, true);
+    assert.strictEqual(listings[0].publishedAt, new Date('2026-09-30T15:00:30Z').toISOString());
     assert.ok(listings[0].requiredSkills.includes('JavaScript'));
     assert.ok(listings[0].spokenLanguages && listings[0].spokenLanguages.some((l) => l.language === 'English'));
   });
@@ -468,7 +472,7 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
     );
   });
 
-  it('fetches across multiple pages when limit exceeds single page results', async () => {
+  it('fetches across multiple pages in initial batch mode when limit exceeds single page results', async () => {
     const requestedPages: number[] = [];
     mockFetch(async (input) => {
       const url = String(input);
@@ -478,6 +482,7 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
 
       const html = `<div class="flex-shrink-0 h-16 w-16">
         <a href="/jobs/companies/c/job-p${pageNum}" data-job-item-link="true" title="Job Page ${pageNum}">Link</a>
+        <time datetime="2026-09-30 15:00:0${pageNum}">1m</time>
       </div>`;
       return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html' } });
     });
@@ -491,4 +496,73 @@ describe('ArbeitnowProvider Web Search Scraping', () => {
     assert.strictEqual(result.listings.length, 2);
     assert.strictEqual(result.nextCursor?.publishedAtCursor, result.listings[0].publishedAt);
   });
+
+  it('terminates crawling early on update scan when boundary is reached', async () => {
+    const requestedPages: number[] = [];
+    mockFetch(async (input) => {
+      const url = String(input);
+      const pageParam = new URL(url).searchParams.get('page');
+      const pageNum = parseInt(pageParam || '1', 10);
+      requestedPages.push(pageNum);
+
+      // Page 1 contains 1 new job (16:00:00) and 1 older job (14:00:00)
+      const html = `
+        <div class="flex-shrink-0 h-16 w-16">
+          <a href="/jobs/companies/c/new-job" data-job-item-link="true" title="New Job">Link</a>
+          <time datetime="2026-09-30 16:00:00">1m</time>
+        </div>
+        <div class="flex-shrink-0 h-16 w-16">
+          <a href="/jobs/companies/c/old-job" data-job-item-link="true" title="Old Job">Link</a>
+          <time datetime="2026-09-30 14:00:00">2h</time>
+        </div>
+      `;
+      return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html' } });
+    });
+
+    const cursorDate = new Date('2026-09-30T15:00:00Z').toISOString();
+    const result = await provider.searchJobs({
+      targetRole: 'engineer',
+      limit: 100,
+      publishedAtCursor: cursorDate,
+      seenJobIds: ['arbeitnow_old-job'],
+    });
+
+    // Should only have fetched page 1 and stopped immediately
+    assert.strictEqual(requestedPages.length, 1);
+    assert.strictEqual(result.listings.length, 1);
+    assert.strictEqual(result.listings[0].id, 'arbeitnow_new-job');
+    assert.strictEqual(result.nextCursor?.publishedAtCursor, new Date('2026-09-30T16:00:00Z').toISOString());
+  });
+
+  it('preserves existing publishedAtCursor when update scan finds zero new postings', async () => {
+    const requestedPages: number[] = [];
+    mockFetch(async (input) => {
+      const url = String(input);
+      const pageParam = new URL(url).searchParams.get('page');
+      const pageNum = parseInt(pageParam || '1', 10);
+      requestedPages.push(pageNum);
+
+      // Page 1 contains only older jobs
+      const html = `
+        <div class="flex-shrink-0 h-16 w-16">
+          <a href="/jobs/companies/c/old-job-1" data-job-item-link="true" title="Old Job 1">Link</a>
+          <time datetime="2026-09-30 14:00:00">2h</time>
+        </div>
+      `;
+      return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html' } });
+    });
+
+    const cursorDate = new Date('2026-09-30T15:00:00Z').toISOString();
+    const result = await provider.searchJobs({
+      targetRole: 'engineer',
+      limit: 100,
+      publishedAtCursor: cursorDate,
+      seenJobIds: ['arbeitnow_old-job-1'],
+    });
+
+    assert.strictEqual(requestedPages.length, 1);
+    assert.strictEqual(result.listings.length, 0);
+    assert.strictEqual(result.nextCursor?.publishedAtCursor, cursorDate);
+  });
 });
+
