@@ -22,6 +22,7 @@ import {
   saveAppliedMatch,
   removeAppliedMatch,
   updateMatchStatus,
+  updateMatchScore,
 } from '@/lib/storage/matchStorage';
 import { getStoredApiKey, getStoredApifyToken } from '@/lib/storage/apiKeyStorage';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
@@ -212,8 +213,14 @@ export default function Home() {
     async (matchId: string) => {
       const matchItem = matches.find((m) => m.id === matchId || m.job.id === matchId);
       const providerJobId = matchItem?.job.id || matchId;
-      setMatches((prev) => prev.filter((m) => m.id !== matchId && m.job.id !== providerJobId));
-      await updateMatchStatus(matchId, 'dismissed', providerJobId);
+      setMatches((prev) =>
+        prev.map((m) =>
+          m.id === matchId || m.job.id === matchId || (providerJobId && m.job.id === providerJobId)
+            ? { ...m, evaluation: { ...m.evaluation, score: 0 } }
+            : m
+        )
+      );
+      await updateMatchScore(matchId, 0, providerJobId);
     },
     [matches],
   );

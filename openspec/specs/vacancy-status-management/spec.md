@@ -6,19 +6,27 @@ Enables users to act on individual job match cards by dismissing vacancies that 
 ## Requirements
 
 ### Requirement: Vacancy Dismissal
-The system SHALL allow users to dismiss any job match card from the active matches list. A dismissed match SHALL be hidden from the active board for the current session. The dismissed status SHALL be persisted in the Supabase `job_matches` table under the `status` column as `'dismissed'` matched by `provider_job_id` and `session_id`, so that the card remains hidden across page reloads. Dismissal SHALL NOT add the job ID to the session's `seenJobIds` checkpoint; it is a display-only action.
+The system SHALL allow users to dismiss any job match card by clicking the "Not for me" action. When dismissed, the system SHALL update the match's fit score to 0% (`fit_score = 0`), keep the match visible in the active matches list, and persist `fit_score = 0` to the Supabase `job_matches` table matched by `provider_job_id` so that the 0% score persists across page reloads. Dismissal SHALL NOT remove the job card from the matches list or change its status away from active. The "Not for me" dismiss button SHALL be hidden or disabled once a match score is 0%.
 
 #### Scenario: User dismisses a vacancy
 - **WHEN** the user clicks the "Not for me" action on a job match card
-- **THEN** the card is immediately removed from the active matches list and the match's `status` is set to `'dismissed'` and persisted to Supabase `job_matches` by its provider job ID
+- **THEN** the match's score is updated to 0%, the card remains in the matches list, and `fit_score = 0` is persisted to Supabase `job_matches` by its provider job ID
 
 #### Scenario: Dismissed vacancy absent after page reload
 - **WHEN** the user reloads the page after dismissing a vacancy
-- **THEN** the dismissed match does not appear in the active matches list for that session
+- **THEN** the vacancy is loaded from Supabase with a 0% fit score and remains visible in the active matches list with its 0% score
 
 #### Scenario: Dismissed vacancy can still reappear from a future scan
 - **WHEN** the user triggers a new scan batch after dismissing a job
-- **THEN** the engine may return the same job listing again (because dismiss does not alter `seenJobIds`), and it will be shown as a new match
+- **THEN** the engine deduplicates against the existing session match and maintains its 0% score
+
+#### Scenario: 0% match position in sorted list
+- **WHEN** matches are sorted by fit score
+- **THEN** vacancies with 0% match score sink naturally to the bottom of the matches list
+
+#### Scenario: Score filter excludes 0% matches
+- **WHEN** a user sets a minimum score filter (e.g. 60%+ Match)
+- **THEN** vacancies with 0% match score are filtered out, but remain visible when "All Matches" (0%+) is selected
 
 ### Requirement: Applied Status Tracking
 The system SHALL allow users to mark any job match card as applied. Marking a match as applied SHALL set its `status` to `'applied'` and persist it to the Supabase `job_matches` table matching `provider_job_id`, so that applied vacancies are queried and visible across all sessions in the global Applied board. When loading applied matches across all sessions from Supabase, the system SHALL deduplicate records by `provider_job_id` so that each unique vacancy is represented exactly once regardless of duplicate database rows across sessions or repeated batch scans. Subsequent scans or page reloads SHALL NOT overwrite an applied vacancy's status back to active.

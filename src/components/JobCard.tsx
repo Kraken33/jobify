@@ -134,8 +134,8 @@ export function JobCard({ match, onDismiss, onApply, hideActions = false }: JobC
               </span>
             )}
 
-            {/* Not for me — dismiss (hidden in Applied tab and when already applied) */}
-            {!hideActions && !isApplied && (
+            {/* Not for me — dismiss (hidden in Applied tab, when already applied, or when 0% match) */}
+            {!hideActions && !isApplied && evaluation.score > 0 && (
               <button
                 type="button"
                 onClick={() => onDismiss?.(match.id)}

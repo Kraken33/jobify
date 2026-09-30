@@ -8,6 +8,7 @@ import {
   loadAppliedMatches,
   saveAppliedMatch,
   updateMatchStatus,
+  updateMatchScore,
 } from '../lib/storage/matchStorage';
 import { setSupabaseClient } from '../lib/supabase/client';
 import { createMockSupabaseClient } from './mockSupabase';
@@ -114,6 +115,20 @@ describe('matchStorage per-session isolation', () => {
     assert.strictEqual(appliedMatches.length, 2);
     const jobIds = appliedMatches.map((m) => m.job.id);
     assert.deepStrictEqual(jobIds.sort(), ['job-applied-dup', 'job-applied-unique'].sort());
+  });
+
+  it('updates match fit score in database while keeping it in active matches', async () => {
+    const sessionMatches = [sampleMatch('m1', 'session-1')];
+    await saveSessionMatches('session-1', sessionMatches);
+
+    let loaded = await loadSessionMatches('session-1');
+    assert.strictEqual(loaded[0].evaluation.score, 85);
+
+    await updateMatchScore('m1', 0, 'job-m1');
+
+    loaded = await loadSessionMatches('session-1');
+    assert.strictEqual(loaded.length, 1);
+    assert.strictEqual(loaded[0].evaluation.score, 0);
   });
 });
 

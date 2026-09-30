@@ -196,6 +196,61 @@ export async function updateMatchStatus(
   }
 }
 
+export async function updateMatchScore(
+  matchId: string,
+  score: number,
+  providerJobId?: string
+): Promise<void> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return;
+  }
+
+  const uuidCandidates = new Set<string>();
+  const textCandidates = new Set<string>();
+
+  const processCandidate = (idStr: string) => {
+    if (!idStr) return;
+    if (isUUID(idStr)) {
+      uuidCandidates.add(idStr);
+    } else {
+      textCandidates.add(idStr);
+    }
+  };
+
+  processCandidate(matchId);
+  processCandidate(providerJobId || '');
+
+  if (matchId && matchId.startsWith('match_')) {
+    const extracted = matchId.replace(/^match_/, '').replace(/_\d+$/, '');
+    processCandidate(extracted);
+  }
+
+  try {
+    const orConditions: string[] = [];
+    for (const uuid of uuidCandidates) {
+      orConditions.push(`id.eq.${uuid}`);
+      orConditions.push(`provider_job_id.eq.${uuid}`);
+    }
+    for (const textId of textCandidates) {
+      orConditions.push(`provider_job_id.eq.${textId}`);
+    }
+
+    if (orConditions.length === 0) return;
+
+    const { error } = await supabase
+      .from('job_matches')
+      .update({ fit_score: score })
+      .or(orConditions.join(','));
+
+    if (error) {
+      console.warn('Failed to update match score in Supabase:', error);
+    }
+  } catch (err) {
+    console.warn('Exception updating match score in Supabase:', err);
+  }
+}
+
 export async function clearSessionMatches(sessionId: string): Promise<void> {
   const supabase = getSupabaseClient();
   if (supabase) {
