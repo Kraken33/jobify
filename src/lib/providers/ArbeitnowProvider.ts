@@ -283,14 +283,15 @@ export class ArbeitnowProvider extends BaseJobProvider {
   }
 
   private async fetchLiveJobs(criteria: SearchCriteria): Promise<ProviderResult> {
+    const targetLimit = Math.max(1, Math.min(100, criteria.limit || 20));
+
     if (this.hasSearchTerms(criteria)) {
       try {
-        const targetLimit = Math.max(1, Math.min(100, criteria.limit || 20));
         const seenSet = new Set(criteria.seenJobIds || []);
         const rawListings: JobListing[] = [];
         const seenIds = new Set<string>();
         let currentPage = 1;
-        const maxPagesToFetch = 3;
+        const maxPagesToFetch = Math.max(3, Math.min(5, Math.ceil(targetLimit / 25)));
 
         while (rawListings.length < targetLimit && currentPage <= maxPagesToFetch) {
           const html = await this.fetchWebSearchPage(criteria, currentPage);
@@ -331,6 +332,10 @@ export class ArbeitnowProvider extends BaseJobProvider {
           // Apply seenJobIds deduplication
           filtered = filtered.filter((listing) => !seenSet.has(listing.id));
 
+          if (filtered.length > targetLimit) {
+            filtered = filtered.slice(0, targetLimit);
+          }
+
           const newestPublishedAt = filtered[0]?.publishedAt ?? rawListings[0]?.publishedAt ?? null;
 
           return {
@@ -347,8 +352,37 @@ export class ArbeitnowProvider extends BaseJobProvider {
       }
     }
 
-    const payload = await this.fetchApiPage(1);
-    return this.normalizeApiResponse(payload, criteria);
+    const maxApiPagesToFetch = Math.max(1, Math.min(5, Math.ceil(targetLimit / 35)));
+    const accumulatedRawItems: ArbeitnowJobItem[] = [];
+    let currentPage = 1;
+
+    while (accumulatedRawItems.length < targetLimit && currentPage <= maxApiPagesToFetch) {
+      const payload = await this.fetchApiPage(currentPage);
+      const items = Array.isArray(payload?.data) ? payload.data : [];
+      if (items.length === 0) {
+        break;
+      }
+      accumulatedRawItems.push(...items);
+
+      const hasNextPage =
+        Boolean(payload?.links?.next) ||
+        (typeof payload?.meta?.current_page === 'number' &&
+          typeof payload?.meta?.total === 'number' &&
+          typeof payload?.meta?.per_page === 'number' &&
+          payload.meta.current_page * payload.meta.per_page < payload.meta.total);
+
+      if (!hasNextPage) {
+        break;
+      }
+
+      currentPage++;
+    }
+
+    const result = this.normalizeApiResponse({ data: accumulatedRawItems }, criteria);
+    if (result.listings.length > targetLimit) {
+      result.listings = result.listings.slice(0, targetLimit);
+    }
+    return result;
   }
 
   public async fetchApiPage(page: number = 1): Promise<ArbeitnowApiResponse> {

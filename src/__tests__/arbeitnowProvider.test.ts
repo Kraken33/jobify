@@ -145,6 +145,55 @@ describe('ArbeitnowProvider API integration & Fallback', () => {
     assert.strictEqual(count, 450);
   });
 
+  it('paginates across multiple REST API pages when limit > 35', async () => {
+    const requestedPages: string[] = [];
+
+    mockFetch(async (input) => {
+      const url = String(input);
+      requestedPages.push(url);
+
+      if (url.includes('page=1')) {
+        const items = Array.from({ length: 35 }, (_, i) => ({
+          slug: `job-page-1-${i}`,
+          title: `Engineer ${i}`,
+          created_at: 1700000 + i,
+        }));
+        return new Response(
+          JSON.stringify({
+            data: items,
+            links: { next: `${ARBEITNOW_API_ENDPOINT}?page=2` },
+            meta: { current_page: 1, per_page: 35, total: 70 },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (url.includes('page=2')) {
+        const items = Array.from({ length: 35 }, (_, i) => ({
+          slug: `job-page-2-${i}`,
+          title: `Developer ${i}`,
+          created_at: 1600000 + i,
+        }));
+        return new Response(
+          JSON.stringify({
+            data: items,
+            links: { next: null },
+            meta: { current_page: 2, per_page: 35, total: 70 },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    });
+
+    const result = await provider.searchJobs({ limit: 50 });
+    assert.strictEqual(requestedPages.length, 2);
+    assert.strictEqual(requestedPages[0], `${ARBEITNOW_API_ENDPOINT}?page=1`);
+    assert.strictEqual(requestedPages[1], `${ARBEITNOW_API_ENDPOINT}?page=2`);
+    assert.strictEqual(result.listings.length, 50);
+  });
+
   it('degrades gracefully to fallback pool on network error', async () => {
     console.warn = () => {};
     mockFetch(async () => {
