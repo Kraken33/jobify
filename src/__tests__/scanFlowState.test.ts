@@ -51,14 +51,18 @@ describe('Scan Flow State (Initial Prefetch vs Update Delta)', () => {
         url: 'https://example.com/job/1',
         provider: 'justjoin',
         publishedAt: '2026-09-30T10:00:00Z',
+        isRemote: true,
+        seniority: 'mid',
+        requiredSkills: ['TypeScript'],
       },
       evaluation: {
         score: 85,
-        verdict: 'High Match',
+        verdict: 'Strong Match',
         pros: ['Great skills'],
         gaps: [],
         summary: 'Strong candidate match',
       },
+      createdAt: '2026-09-30T10:00:00Z',
     };
 
     const state = computeScanFlowState([mockMatch], null, 20);
@@ -86,8 +90,12 @@ describe('Scan Flow State (Initial Prefetch vs Update Delta)', () => {
         url: 'https://example.com',
         provider: 'justjoin',
         publishedAt: '2026-09-30T10:00:00Z',
+        isRemote: true,
+        seniority: 'mid',
+        requiredSkills: ['React'],
       },
-      evaluation: { score: 90, verdict: 'High Match', pros: [], gaps: [], summary: 'Good' },
+      evaluation: { score: 90, verdict: 'Strong Match', pros: [], gaps: [], summary: 'Good' },
+      createdAt: '2026-09-30T10:00:00Z',
     };
     const beforeReset = computeScanFlowState([mockMatch], { publishedAtCursor: '2026-09-30T10:00:00Z' }, 20);
     assert.strictEqual(beforeReset.isUpdateMode, true);

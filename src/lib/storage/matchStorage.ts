@@ -15,7 +15,7 @@ export async function loadSessionMatches(sessionId: string): Promise<MatchResult
     let query = supabase
       .from('job_matches')
       .select('*')
-      .neq('status', 'dismissed')
+      .or('status.eq.active,status.is.null')
       .order('created_at', { ascending: false });
 
     if (sessionId.startsWith('jobify:implicit:')) {
@@ -135,20 +135,59 @@ export async function saveSessionMatches(sessionId: string, matches: MatchResult
   }
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUUID(str: string): boolean {
+  return UUID_REGEX.test(str);
+}
+
 export async function updateMatchStatus(
   matchId: string,
-  status: 'active' | 'applied' | 'dismissed'
+  status: 'active' | 'applied' | 'dismissed',
+  providerJobId?: string
 ): Promise<void> {
   const supabase = getSupabaseClient();
   if (!supabase) {
     return;
   }
 
+  const uuidCandidates = new Set<string>();
+  const textCandidates = new Set<string>();
+
+  const processCandidate = (idStr: string) => {
+    if (!idStr) return;
+    if (isUUID(idStr)) {
+      uuidCandidates.add(idStr);
+    } else {
+      textCandidates.add(idStr);
+    }
+  };
+
+  processCandidate(matchId);
+  processCandidate(providerJobId || '');
+
+  if (matchId && matchId.startsWith('match_')) {
+    const extracted = matchId.replace(/^match_/, '').replace(/_\d+$/, '');
+    processCandidate(extracted);
+  }
+
   try {
+    const orConditions: string[] = [];
+    for (const uuid of uuidCandidates) {
+      orConditions.push(`id.eq.${uuid}`);
+      orConditions.push(`provider_job_id.eq.${uuid}`);
+    }
+    for (const textId of textCandidates) {
+      orConditions.push(`provider_job_id.eq.${textId}`);
+    }
+
+    if (orConditions.length === 0) return;
+
     const { error } = await supabase
       .from('job_matches')
       .update({ status })
-      .or(`id.eq.${matchId},provider_job_id.eq.${matchId}`);
+      .or(orConditions.join(','));
+
     if (error) {
       console.warn('Failed to update match status in Supabase:', error);
     }
@@ -231,12 +270,10 @@ export async function loadAppliedMatches(): Promise<MatchResult[]> {
 }
 
 export async function saveAppliedMatch(match: MatchResult): Promise<void> {
-  await updateMatchStatus(match.id, 'applied');
-  if (match.job?.id && match.job.id !== match.id) {
-    await updateMatchStatus(match.job.id, 'applied');
-  }
+  await updateMatchStatus(match.id, 'applied', match.job?.id);
 }
 
-export async function removeAppliedMatch(matchId: string): Promise<void> {
-  await updateMatchStatus(matchId, 'active');
+export async function removeAppliedMatch(matchId: string, providerJobId?: string): Promise<void> {
+  await updateMatchStatus(matchId, 'active', providerJobId);
 }
+

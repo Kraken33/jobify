@@ -266,11 +266,11 @@ export async function POST(request: NextRequest) {
         }));
 
         if (isImplicit) {
-          for (const row of rows) {
-            const { error: upsertErr } = await supabase
-              .from('job_matches')
-              .upsert(row, { onConflict: 'provider_job_id' });
-            if (upsertErr) {
+          const { error: upsertErr } = await supabase
+            .from('job_matches')
+            .upsert(rows, { onConflict: 'provider_job_id', ignoreDuplicates: true });
+          if (upsertErr) {
+            for (const row of rows) {
               await supabase.from('job_matches').insert([row]);
             }
           }

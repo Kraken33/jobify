@@ -214,10 +214,12 @@ export default function Home() {
 
   const handleDismiss = useCallback(
     async (matchId: string) => {
-      setMatches((prev) => prev.filter((m) => m.id !== matchId && m.job.id !== matchId));
-      await updateMatchStatus(matchId, 'dismissed');
+      const matchItem = matches.find((m) => m.id === matchId || m.job.id === matchId);
+      const providerJobId = matchItem?.job.id || matchId;
+      setMatches((prev) => prev.filter((m) => m.id !== matchId && m.job.id !== providerJobId));
+      await updateMatchStatus(matchId, 'dismissed', providerJobId);
     },
-    [],
+    [matches],
   );
 
   const handleApply = useCallback(
@@ -238,14 +240,16 @@ export default function Home() {
   const handleRemoveFromApplied = useCallback(
     async (matchId: string) => {
       const currentSessionId = activeSessionId || sessions[0]?.id;
-      setAppliedMatches((prev) => prev.filter((m) => m.id !== matchId && m.job.id !== matchId));
-      await removeAppliedMatch(matchId);
+      const appliedItem = appliedMatches.find((m) => m.id === matchId || m.job.id === matchId);
+      const providerJobId = appliedItem?.job.id || matchId;
+      setAppliedMatches((prev) => prev.filter((m) => m.id !== matchId && m.job.id !== providerJobId));
+      await removeAppliedMatch(matchId, providerJobId);
       if (currentSessionId) {
         const refreshedMatches = await loadSessionMatches(currentSessionId);
         setMatches(refreshedMatches);
       }
     },
-    [activeSessionId, sessions],
+    [activeSessionId, sessions, appliedMatches],
   );
 
   const handleResetSession = useCallback(async () => {
