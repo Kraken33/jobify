@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { CandidateProfile, MatchResult, SearchSession, ProviderCursor } from '@/types';
 import { JobCard } from './JobCard';
+import { formatPublishedDate, getDayTimestamp } from '@/lib/utils/dateFormat';
 import {
   Sparkles,
   ArrowUpDown,
@@ -16,6 +17,7 @@ import {
   ChevronDown,
   RefreshCw,
   Settings,
+  Calendar,
 } from 'lucide-react';
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -27,6 +29,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 interface MatchesBoardProps {
   profile?: CandidateProfile;
   matches: MatchResult[];
+  newlyFetchedJobIds?: string[];
   isLoading: boolean;
   onTriggerScan: (limit?: unknown) => void;
   hasApiKey: boolean;
@@ -45,6 +48,7 @@ interface MatchesBoardProps {
 export function MatchesBoard({
   profile,
   matches,
+  newlyFetchedJobIds = [],
   isLoading,
   onTriggerScan,
   hasApiKey,
@@ -61,7 +65,9 @@ export function MatchesBoard({
 }: MatchesBoardProps) {
   const [minScoreFilter, setMinScoreFilter] = useState<number>(0);
   const [remoteOnlyFilter, setRemoteOnlyFilter] = useState<boolean>(false);
-  const [sortBy, setSortBy] = useState<'score' | 'salary'>('score');
+  const [sortBy, setSortBy] = useState<'newest' | 'score' | 'salary'>('newest');
+
+  const newJobIdSet = useMemo(() => new Set(newlyFetchedJobIds), [newlyFetchedJobIds]);
 
   const [batchSize, setBatchSize] = useState<number>(20);
   const [totalVacancies, setTotalVacancies] = useState<number | null>(null);
@@ -131,6 +137,15 @@ export function MatchesBoard({
       .filter((m) => m.evaluation.score >= minScoreFilter)
       .filter((m) => (!remoteOnlyFilter ? true : m.job.isRemote))
       .sort((a, b) => {
+        if (sortBy === 'newest') {
+          const dayA = getDayTimestamp(a.job.publishedAt || a.createdAt);
+          const dayB = getDayTimestamp(b.job.publishedAt || b.createdAt);
+          if (dayB !== dayA) {
+            return dayB - dayA;
+          }
+          // Tie breaker within the same day: AI fit score descending
+          return b.evaluation.score - a.evaluation.score;
+        }
         if (sortBy === 'score') {
           return b.evaluation.score - a.evaluation.score;
         }
@@ -454,9 +469,10 @@ export function MatchesBoard({
             <span>Sort by:</span>
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as 'score' | 'salary')}
+              onChange={(e) => setSortBy(e.target.value as 'newest' | 'score' | 'salary')}
               className="bg-neutral-900 border border-neutral-800 text-neutral-200 px-2.5 py-1 rounded-lg text-xs focus:outline-none"
             >
+              <option value="newest">Newest (Date & Fit)</option>
               <option value="score">Fit Score (Highest first)</option>
               <option value="salary">Salary (Highest first)</option>
             </select>
@@ -483,14 +499,42 @@ export function MatchesBoard({
       {/* Job Cards List */}
       {!isLoading && filteredMatches.length > 0 && (
         <div className="space-y-4">
-          {filteredMatches.map((match) => (
-            <JobCard
-              key={match.id}
-              match={match}
-              onDismiss={onDismiss}
-              onApply={onApply}
-            />
-          ))}
+          {filteredMatches.map((match, index) => {
+            let dayDividerLabel: string | null = null;
+            if (sortBy === 'newest') {
+              const currentDayKey = formatPublishedDate(match.job.publishedAt || match.createdAt);
+              const prevMatch = index > 0 ? filteredMatches[index - 1] : null;
+              const prevDayKey = prevMatch
+                ? formatPublishedDate(prevMatch.job.publishedAt || prevMatch.createdAt)
+                : null;
+              if (index === 0 || currentDayKey !== prevDayKey) {
+                dayDividerLabel = currentDayKey || 'Other Postings';
+              }
+            }
+
+            return (
+              <React.Fragment key={match.id}>
+                {dayDividerLabel && (
+                  <div
+                    className="flex items-center gap-3 pt-3 pb-1"
+                    data-testid="day-group-divider"
+                  >
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-neutral-900 border border-neutral-800 text-xs font-semibold text-neutral-300 shadow-sm">
+                      <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>{dayDividerLabel}</span>
+                    </div>
+                    <div className="flex-1 h-px bg-gradient-to-r from-neutral-800 via-neutral-800/60 to-transparent" />
+                  </div>
+                )}
+                <JobCard
+                  match={match}
+                  isNew={newJobIdSet.has(match.id) || newJobIdSet.has(match.job.id)}
+                  onDismiss={onDismiss}
+                  onApply={onApply}
+                />
+              </React.Fragment>
+            );
+          })}
         </div>
       )}
 

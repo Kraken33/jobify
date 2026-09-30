@@ -40,6 +40,7 @@ export default function Home() {
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
   const [isCreateSessionOpen, setIsCreateSessionOpen] = useState(false);
   const [appliedMatches, setAppliedMatches] = useState<MatchResult[]>([]);
+  const [newlyFetchedJobIds, setNewlyFetchedJobIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -171,6 +172,10 @@ export default function Home() {
           const newUnique = returnedMatches.filter((m) => !prevIds.has(m.job.id));
           return [...prev, ...newUnique];
         });
+        if (newUniqueMatches.length > 0) {
+          const uniqueIds = newUniqueMatches.map((m) => m.job.id);
+          setNewlyFetchedJobIds((prev) => Array.from(new Set([...prev, ...uniqueIds])));
+        }
       }
 
       if (currentSessionId && data.nextCursor !== undefined) {
@@ -259,6 +264,7 @@ export default function Home() {
     const currentSessionId = activeSessionId || sessions[0]?.id;
     const currentSession = sessions.find((s) => s.id === currentSessionId);
     setMatches([]);
+    setNewlyFetchedJobIds([]);
     if (currentSessionId) {
       setCursors((prev) => ({
         ...prev,
@@ -273,6 +279,7 @@ export default function Home() {
 
   const handleSessionChange = useCallback(async (newSessionId: string) => {
     setActiveSessionId(newSessionId);
+    setNewlyFetchedJobIds([]);
     const sessionMatches = await loadSessionMatches(newSessionId);
     setMatches(sessionMatches);
   }, []);
@@ -292,6 +299,7 @@ export default function Home() {
     if (activeSessionId === sessionIdToDelete) {
       const nextActive = remainingSessions[0];
       setActiveSessionId(nextActive.id);
+      setNewlyFetchedJobIds([]);
       const nextMatches = await loadSessionMatches(nextActive.id);
       setMatches(nextMatches);
     }
@@ -365,6 +373,7 @@ export default function Home() {
           <MatchesBoard
             profile={profile}
             matches={matches}
+            newlyFetchedJobIds={newlyFetchedJobIds}
             isLoading={isLoading}
             onTriggerScan={handleTriggerScan}
             hasApiKey={Boolean(apiKey)}

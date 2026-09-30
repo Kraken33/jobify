@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { MatchResult } from '@/types';
+import { formatPublishedDate } from '@/lib/utils/dateFormat';
 import {
   ExternalLink,
   Building,
@@ -17,6 +18,7 @@ import {
   Eye,
   CheckCheck,
   X,
+  Calendar,
 } from 'lucide-react';
 
 interface JobCardProps {
@@ -25,9 +27,11 @@ interface JobCardProps {
   onApply?: (match: MatchResult) => void;
   /** When true, hides the "Not for me" dismiss button (e.g. in the Applied tab) */
   hideActions?: boolean;
+  /** When true, highlights the card as newly fetched in the current session */
+  isNew?: boolean;
 }
 
-export function JobCard({ match, onDismiss, onApply, hideActions = false }: JobCardProps) {
+export function JobCard({ match, onDismiss, onApply, hideActions = false, isNew = false }: JobCardProps) {
   const [expanded, setExpanded] = useState(true);
   const { job, evaluation } = match;
 
@@ -48,7 +52,13 @@ export function JobCard({ match, onDismiss, onApply, hideActions = false }: JobC
   };
 
   return (
-    <div className="bg-neutral-900/90 border border-neutral-800 hover:border-neutral-700/80 rounded-2xl p-5 shadow-lg transition-all duration-200 hover:shadow-indigo-950/20">
+    <div
+      className={`border rounded-2xl p-5 shadow-lg transition-all duration-200 ${
+        isNew
+          ? 'bg-neutral-900/95 border-indigo-500/60 ring-1 ring-indigo-500/30 shadow-indigo-950/30'
+          : 'bg-neutral-900/90 border-neutral-800 hover:border-neutral-700/80 hover:shadow-indigo-950/20'
+      }`}
+    >
       {/* Header info */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-neutral-800/80">
         <div className="space-y-1.5 flex-1">
@@ -56,6 +66,14 @@ export function JobCard({ match, onDismiss, onApply, hideActions = false }: JobC
             <h3 className="text-base font-semibold text-white tracking-tight hover:text-indigo-300 transition">
               {job.title}
             </h3>
+            {isNew && (
+              <span
+                data-testid="new-badge"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm shadow-indigo-500/10"
+              >
+                <Sparkles className="w-3 h-3 text-indigo-400" /> New
+              </span>
+            )}
             {job.isRemote && (
               <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-indigo-950/70 text-indigo-300 border border-indigo-800/50">
                 <Wifi className="w-3 h-3" /> Remote
@@ -85,6 +103,16 @@ export function JobCard({ match, onDismiss, onApply, hideActions = false }: JobC
                 <Banknote className="w-3.5 h-3.5 text-emerald-500" />
                 {job.salaryRange.min?.toLocaleString()}
                 {job.salaryRange.max ? ` - ${job.salaryRange.max.toLocaleString()}` : '+'} {job.salaryRange.currency}
+              </span>
+            )}
+            {(job.publishedAt || match.createdAt) && (
+              <span
+                data-testid="published-date"
+                className="flex items-center gap-1 text-neutral-400"
+                title={`Published: ${job.publishedAt || match.createdAt}`}
+              >
+                <Calendar className="w-3.5 h-3.5 text-neutral-500" />
+                <span>{formatPublishedDate(job.publishedAt || match.createdAt)}</span>
               </span>
             )}
           </div>
