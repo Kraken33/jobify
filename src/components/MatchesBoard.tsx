@@ -331,15 +331,31 @@ export function MatchesBoard({
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => (hasApiKey ? onTriggerScan(batchSize) : onOpenKeyModal())}
-            disabled={isScanDisabled}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-lg shadow-indigo-600/25 transition"
-          >
-            <Sparkles className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            {isLoading ? 'Scanning & Scoring with AI...' : `Scan Batch (${batchSize})`}
-          </button>
+          {/* Primary Action Button: "Scan Batch (X)" vs "Update" */}
+          {(() => {
+            const isUpdateMode = matches.length > 0 || Boolean(nextCursor?.publishedAtCursor);
+            const buttonLabel = isLoading
+              ? isUpdateMode
+                ? 'Updating & Checking for New...'
+                : 'Scanning & Scoring with AI...'
+              : isUpdateMode
+              ? 'Update'
+              : `Scan Batch (${batchSize})`;
+
+            return (
+              <button
+                type="button"
+                onClick={() =>
+                  hasApiKey ? onTriggerScan(isUpdateMode ? 100 : batchSize) : onOpenKeyModal()
+                }
+                disabled={isScanDisabled}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-lg shadow-indigo-600/25 transition"
+              >
+                <Sparkles className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                {buttonLabel}
+              </button>
+            );
+          })()}
         </div>
       </div>
 

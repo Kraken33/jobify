@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     const payloadPublishedAtCursor: string | null =
       typeof body.publishedAtCursor === 'string' ? body.publishedAtCursor : null;
     const payloadSeenJobIds: string[] = Array.isArray(body.seenJobIds)
-      ? body.seenJobIds.filter((id): id is string => typeof id === 'string')
+      ? body.seenJobIds.filter((id: unknown): id is string => typeof id === 'string')
       : [];
 
     let checkpoint: ScanCheckpoint | null = await loadCheckpoint(session.id, providerId);

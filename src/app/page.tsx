@@ -121,11 +121,18 @@ export default function Home() {
     const currentSessionId = activeSessionId || sessions[0]?.id;
     const currentSession = sessions.find((s) => s.id === currentSessionId);
     const providerId = currentSession?.provider || 'justjoin';
-    const scanLimit = typeof customLimit === 'number' && !Number.isNaN(customLimit) ? customLimit : 20;
 
     const currentCursor = currentSessionId ? cursors[currentSessionId] : undefined;
     const publishedAtCursor = currentCursor?.publishedAtCursor || null;
     const seenJobIds = matches.map((m) => m.job.id).slice(-500);
+
+    const isUpdateMode = matches.length > 0 || Boolean(publishedAtCursor);
+    const scanLimit =
+      typeof customLimit === 'number' && !Number.isNaN(customLimit)
+        ? customLimit
+        : isUpdateMode
+        ? 100
+        : 20;
 
     try {
       const response = await fetch('/api/match', {
@@ -180,14 +187,21 @@ export default function Home() {
 
       if (newUniqueCount > 0) {
         const notice = typeof data.notice === 'string' ? data.notice : null;
-        setSuccessMessage(
-          notice
-            ? `Evaluated ${newUniqueCount} new positions. ${notice}`
-            : `Successfully evaluated ${newUniqueCount} new positions!`
-        );
+        const successText = isUpdateMode
+          ? notice
+            ? `Successfully updated! Evaluated ${newUniqueCount} new positions. ${notice}`
+            : `Successfully updated! Evaluated ${newUniqueCount} new positions!`
+          : notice
+          ? `Evaluated ${newUniqueCount} new positions. ${notice}`
+          : `Successfully evaluated ${newUniqueCount} new positions!`;
+        setSuccessMessage(successText);
         setTimeout(() => setSuccessMessage(null), notice ? 7000 : 3500);
       } else {
-        const msg = data.message || 'There are no new vacancies added.';
+        const msg =
+          data.message ||
+          (isUpdateMode
+            ? "You're up to date! No new vacancies posted since your last scan."
+            : 'There are no new vacancies added.');
         setErrorMessage(msg);
       }
     } catch (err: unknown) {
