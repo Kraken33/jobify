@@ -55,11 +55,12 @@ The system SHALL associate each job match result with the search session that pr
 - **THEN** the system loads matches for that session deduplicated by `provider_job_id` and does not display inflated or duplicated match counts
 
 ### Requirement: Profile as Default Session Template
-The system SHALL use the candidate profile's skills, seniority, work mode, and spoken language fields as default values when bootstrapping a new search session in Supabase, while the session's own parameters are the authoritative source for all provider queries once the session is created.
+The system SHALL use the candidate profile's target role, skills, seniority, work mode, and spoken language fields as default values when bootstrapping a new search session in Supabase, while the session's own parameters are the authoritative source for all provider queries once the session is created.
 
 #### Scenario: Bootstrapping a first session from profile defaults
 - **WHEN** no sessions exist for the current profile in Supabase and the user loads the app or triggers a scan
-- **THEN** the system automatically creates an implicit session using the profile's current skills, seniority, work mode, and spoken languages, persists it in Supabase, and associates subsequent matches with that session
+- **THEN** the system automatically creates an implicit session using the profile's current target role, skills, seniority, work mode, and spoken languages, persists it in Supabase, and associates subsequent matches with that session
+
 
 ### Requirement: Total Vacancies and Prefetch Batch Sizing Control
 The system SHALL surface the total number of matching vacancies available for the current search session, forwarding the active search session payload with its target role and provider options to the vacancy count endpoint, and allow the user to select or configure a custom batch size for scan execution directly next to the session reset controls. The system SHALL display the primary scan trigger button as `"Scan Batch ({batchSize})"` when a search session is uninitialized or has no stored matches/checkpoint, and SHALL transition the primary scan button to `"Update"` once an initial scan batch has completed and a session checkpoint or matches exist. Clicking `"Update"` SHALL execute a delta scan searching for all newly published vacancies published strictly after the session's last checkpoint timestamp. Resetting a search session SHALL clear its checkpoint and revert the primary scan button back to `"Scan Batch ({batchSize})"`.

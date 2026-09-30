@@ -6,7 +6,7 @@ Defines an extensible job provider ingestion interface with JustJoin.it and Bund
 ## Requirements
 
 ### Requirement: Extensible Job Provider Adapter Interface
-The system SHALL define a standardized provider contract that accepts candidate search criteria (technology keywords, seniority level, remote preferences, spoken language criteria, and an optional pagination cursor) and returns a result envelope containing normalized job listings (including required spoken languages with CEFR levels when specified) and an updated cursor for subsequent fetches. The cursor SHALL carry the `published_at` timestamp of the newest job in the returned batch, enabling the next call to request only jobs published after that point.
+The system SHALL define a standardized provider contract that accepts candidate search criteria (target role / job title keywords, seniority level, remote preferences, spoken language criteria, provider-specific hints, and an optional pagination cursor) and returns a result envelope containing normalized job listings (including required spoken languages with CEFR levels when specified) and an updated cursor for subsequent fetches. The cursor SHALL carry the `published_at` timestamp of the newest job in the returned batch, enabling the next call to request only jobs published after that point. Provider adapters SHALL query remote job boards using the target role or job title keywords rather than candidate skill lists; candidate skill lists SHALL be evaluated during post-ingestion fit matching rather than sent as restrictive provider search terms.
 
 #### Scenario: Provider interface returns normalized listing structure with cursor
 - **WHEN** a provider adapter fetches listings from its underlying source
@@ -21,7 +21,7 @@ The system SHALL define a standardized provider contract that accepts candidate 
 - **THEN** it fetches the full current pool of listings without a date filter, and the returned `nextCursor` is set to the `published_at` of the newest listing in the result
 
 ### Requirement: JustJoin.it Provider Integration
-The system SHALL implement a provider adapter for JustJoin.it that fetches live job offers. When an Apify API token is available in search criteria or runtime configuration, the adapter SHALL query JustJoin.it offers through the Apify `trev0n/justjoinit-scraper` actor. The adapter SHALL map candidate skills, seniority, work mode, and location to actor input parameters, parse returned dataset items into canonical job listing objects, extract required spoken languages (`spokenLanguages`) with CEFR levels from item fields, all tech stack skill arrays (`requiredSkills`, `skills`, `niceToHave`, `techStack`, `tech_stack`, `skills_tags`), or offer descriptions, and preserve cursor pagination. When no Apify token is provided or when scraping requests fail or exceed quotas, the adapter SHALL fall back to a deterministic multi-page fallback generator without crashing.
+The system SHALL implement a provider adapter for JustJoin.it that fetches live job offers. When an Apify API token is available in search criteria or runtime configuration, the adapter SHALL query JustJoin.it offers through the Apify `trev0n/justjoinit-scraper` actor. The adapter SHALL map target job title / role keyword, seniority, work mode, and location to actor input parameters, parse returned dataset items into canonical job listing objects, extract required spoken languages (`spokenLanguages`) with CEFR levels from item fields, all tech stack skill arrays (`requiredSkills`, `skills`, `niceToHave`, `techStack`, `tech_stack`, `skills_tags`), or offer descriptions, and preserve cursor pagination. When no Apify token is provided or when scraping requests fail or exceed quotas, the adapter SHALL fall back to a deterministic multi-page fallback generator without crashing.
 
 The adapter SHALL apply spoken-language pre-filtering during Apify input construction: when the candidate's search criteria include `spokenLanguages`, and the actor supports a language filter parameter (e.g., `languages`), the adapter SHALL include only the candidate's known language codes in the actor input to reduce language-mismatched listings at the source. If the actor does not support such a filter or the parameter has no effect, this requirement does not apply and language filtering falls back to client-side pre-filtering only.
 
@@ -40,8 +40,8 @@ The adapter's `extractSpokenLanguages` function SHALL correctly identify languag
 - **THEN** the adapter includes the candidate's language codes in the Apify actor input to narrow results towards listings matching those languages
 
 #### Scenario: Fetching listings by technology and level
-- **WHEN** the user initiates an ingestion run targeting specific skills (e.g., "javascript", "react") and seniority (e.g., "mid")
-- **THEN** the JustJoin.it adapter queries the appropriate JustJoin.it endpoints, retrieves the newest active postings, and returns a `ProviderResult` envelope with normalized job objects and an updated cursor
+- **WHEN** the user initiates an ingestion run targeting a specific role or keywords (e.g., "Frontend Developer") and seniority (e.g., "mid")
+- **THEN** the JustJoin.it adapter queries the appropriate JustJoin.it endpoints using the role keyword, retrieves the newest active postings, and returns a `ProviderResult` envelope with normalized job objects and an updated cursor
 
 #### Scenario: Fetching new listings with a cursor
 - **WHEN** the adapter receives a non-null `publishedAtCursor` in the search criteria
@@ -56,8 +56,8 @@ The adapter's `extractSpokenLanguages` function SHALL correctly identify languag
 - **THEN** the adapter falls back to the deterministic multi-page generator without crashing the application and includes a `fallback: true` flag in the `ProviderResult`
 
 #### Scenario: Ingesting live offers via Apify actor with spoken language extraction
-- **WHEN** search criteria contain an Apify API token and target specific skills (e.g., "javascript", "react") and seniority (e.g., "mid")
-- **THEN** the adapter executes the `trev0n/justjoinit-scraper` actor with corresponding category, keyword, and experience filters, transforms returned dataset items into normalized listings with extracted `spokenLanguages`, and returns a `ProviderResult` with `fallback: false`
+- **WHEN** search criteria contain an Apify API token and target a specific role and seniority (e.g., "mid")
+- **THEN** the adapter executes the `trev0n/justjoinit-scraper` actor with corresponding keyword and experience filters, transforms returned dataset items into normalized listings with extracted `spokenLanguages`, and returns a `ProviderResult` with `fallback: false`
 
 #### Scenario: Date cursor filtering with Apify scraper
 - **WHEN** the adapter runs with an Apify token and a non-null `publishedAtCursor`
@@ -72,11 +72,11 @@ The adapter's `extractSpokenLanguages` function SHALL correctly identify languag
 - **THEN** the adapter catches the error, logs a diagnostic warning, falls back to the deterministic multi-page generator, and returns a `ProviderResult` with `fallback: true`
 
 ### Requirement: Bundesagentur für Arbeit Provider Integration
-The system SHALL implement a provider adapter for Bundesagentur für Arbeit (arbeitsagentur.de) that queries active job listings using the official public REST API (`/pc/v6/jobs`) with the public client authentication header `X-API-Key: jobboerse-jobsuche`. The adapter SHALL serialize search criteria (target role, keywords, skills, location, work mode) into query parameters (`was`, `wo`), parse returned listings into canonical `JobListing` objects with EUR currency and home office remote flags, sort them by publication date, and preserve pagination state. Because the board only lists jobs located in Germany, a location it cannot resolve is answered with an HTTP success status and an empty or near-empty result set; the adapter SHALL then retry the search exactly once without `wo` and attach a `notice` describing the relaxation instead of reporting an empty located scan. When the remote service is unreachable or encounters an HTTP error, the adapter SHALL fall back to a deterministic multi-page fallback generator without throwing an unhandled exception.
+The system SHALL implement a provider adapter for Bundesagentur für Arbeit (arbeitsagentur.de) that queries active job listings using the official public REST API (`/pc/v6/jobs`) with the public client authentication header `X-API-Key: jobboerse-jobsuche`. The adapter SHALL serialize search criteria (target role or keywords, location, work mode) into query parameters (`was`, `wo`), parse returned listings into canonical `JobListing` objects with EUR currency and home office remote flags, sort them by publication date, and preserve pagination state. Because the board only lists jobs located in Germany, a location it cannot resolve is answered with an HTTP success status and an empty or near-empty result set; the adapter SHALL then retry the search exactly once without `wo` and attach a `notice` describing the relaxation instead of reporting an empty located scan. When the remote service is unreachable or encounters an HTTP error, the adapter SHALL fall back to a deterministic multi-page fallback generator without throwing an unhandled exception.
 
 #### Scenario: Ingesting live offers from Arbeitsagentur
-- **WHEN** an ingestion scan is executed for provider `arbeitsagentur` with keywords and optional location
-- **THEN** the adapter issues an HTTP request to `https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs` with `X-API-Key: jobboerse-jobsuche`, transforms returned `ergebnisliste` entries into normalized `JobListing` items with provider `'arbeitsagentur'`, and returns a `ProviderResult` with `fallback: false`
+- **WHEN** an ingestion scan is executed for provider `arbeitsagentur` with target role / keywords and optional location
+- **THEN** the adapter issues an HTTP request to `https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs` with `X-API-Key: jobboerse-jobsuche` and `was` set to target role / keyword, transforms returned `ergebnisliste` entries into normalized `JobListing` items with provider `'arbeitsagentur'`, and returns a `ProviderResult` with `fallback: false`
 
 #### Scenario: Date cursor filtering on Arbeitsagentur results
 - **WHEN** the adapter runs with a non-null `publishedAtCursor` timestamp
@@ -101,6 +101,8 @@ The system SHALL implement a provider adapter for Bundesagentur für Arbeit (arb
 ### Requirement: Arbeitnow Provider Integration
 The system SHALL implement a provider adapter for Arbeitnow (`arbeitnow.com`) that queries job listings matching candidate search criteria. When search criteria (keywords, skills, or language tags) are present, the adapter SHALL construct web search requests with `sort_by=newest` to ensure results are ordered by publication date (newest first) and parse HTML search result cards (`data-job-item-link="true"` elements and microdata) into canonical `JobListing` objects (including `title`, `company`, `description`, `city`, `isRemote`, `url`, `tags`, and publication dates). When no search keywords or tags are present or web search parsing encounters errors, the adapter MAY fall back to the public REST API (`https://www.arbeitnow.com/api/job-board-api`) or deterministic fallback generator without throwing an unhandled exception. The adapter SHALL extract required spoken languages (`spokenLanguages`) with CEFR levels from item tags and descriptions, and maintain cursor pagination using ISO publication timestamps (`publishedAtCursor`) representing the newest listing's `publishedAt` timestamp. The adapter SHALL always start incremental search scans from Page 1 (where the newest postings land) rather than incrementing page numbers on subsequent scans, enabling proper delta scanning for newly published vacancies.
 
+When `criteria.limit` (Prefetch Batch Size) is specified, the adapter SHALL dynamically calculate the required number of pages to fetch for both REST API fallback mode (35 items per page) and web search scraping mode (~25 items per page) up to a configurable maximum safety limit of 5 pages. In REST API mode, when `criteria.limit` exceeds 35 items, the adapter SHALL issue multi-page API requests (`?page=1`, `?page=2`, etc.) sequentially until the accumulated listing count meets or exceeds `criteria.limit` or no further pages exist. The adapter SHALL truncate the normalized, deduplicated, and cursor-filtered listings to `criteria.limit` before returning the `ProviderResult`.
+
 The adapter SHALL support provider-specific endpoint selection via `providerHints.arbeitnow.endpoint` in `SearchCriteria`. When this hint is present, the adapter SHALL use that value as the URL path segment AND inject any tag implicitly associated with that endpoint into the `tags` query parameter alongside any candidate-derived tags. The endpoint-to-tag mapping is: `english-speaking-jobs` → `"english speaking"`, `visa-sponsorship-jobs` → `"visa sponsorship"`. Endpoints with no associated tag (`jobs-with-salary`, `4-day-work-week-jobs`, `jobs-with-relocation`) only change the path and do not inject any implicit tag. When the hint is absent or empty, the adapter SHALL fall back to the generic root endpoint without injecting implicit tags.
 
 When querying total vacancies via `getJobCount` with search criteria, the adapter SHALL extract the total count by parsing the embedded JavaScript pagination state object (`let data = {...}`) from the search page HTML, reading `data.total` (or calculating `data.last_page * data.per_page` when `total` is missing). If embedded script parsing fails, the adapter MAY fall back to matching plain-text vacancy summary patterns in the DOM HTML or querying the public REST API envelope.
@@ -108,6 +110,10 @@ When querying total vacancies via `getJobCount` with search criteria, the adapte
 #### Scenario: Ingesting live offers from Arbeitnow web search
 - **WHEN** an ingestion scan is executed for provider `arbeitnow` with search criteria containing keywords or tags (e.g. "javascript" with "english speaking")
 - **THEN** the adapter issues an HTTP request to `https://www.arbeitnow.com/?search=javascript&tags=%5B%22english+speaking%22%5D&sort_by=newest&date_posted=all&page=1`, parses HTML search result cards into canonical `JobListing` items with provider `'arbeitnow'`, extracts spoken language requirements, and returns a `ProviderResult` with `fallback: false`
+
+#### Scenario: Multi-page REST API pagination for batch sizes exceeding 35
+- **WHEN** an ingestion scan is executed for provider `arbeitnow` using REST API fetching with `criteria.limit` set to 50
+- **THEN** the adapter issues sequential REST API requests (`?page=1` and `?page=2`), accumulates items across both pages, normalizes and deduplicates them, truncates the result array to 50 listings, and returns a `ProviderResult` with `fallback: false`
 
 #### Scenario: Using a provider-specific endpoint hint
 - **WHEN** an ingestion scan is executed for provider `arbeitnow` with `providerHints.arbeitnow.endpoint` set to `english-speaking-jobs` and a keyword (e.g. `"javascript"`)
@@ -139,4 +145,5 @@ The system SHALL extend the job provider interface to support fetching or estima
 #### Scenario: Querying total vacancies from JustJoin.it
 - **WHEN** the count query is executed for provider `justjoin` with search criteria
 - **THEN** the adapter returns the total available matching job count (from Apify dataset metadata or fallback pool total size)
+
 
